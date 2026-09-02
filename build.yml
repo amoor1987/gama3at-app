@@ -33,8 +33,8 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Install Flet CLI
-        run: pip install flet
+      - name: Install Flet and Dependencies
+        run: pip install flet fpdf
 
       - name: Build APK via Flet
         run: flet build apk --force
