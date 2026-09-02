@@ -1,0 +1,14 @@
+[tool.flet.app]
+product_name = "Gam3eyt Emoo"
+description = "برنامج لاداره الجمعيات الخاصه بدكان السعاده"
+
+[project]
+name = "gama3at-app"
+dependencies = [
+    "fpdf>=1.7.2"
+]
+
+[tool.flet]
+dependencies = [
+    "fpdf>=1.7.2"
+]
