@@ -5,10 +5,10 @@ description = "برنامج لاداره الجمعيات الخاصه بدكا�
 [project]
 name = "gama3at-app"
 dependencies = [
-    "fpdf>=1.7.2"
+    "fpdf2>=2.7.0"
 ]
 
 [tool.flet]
 dependencies = [
-    "fpdf>=1.7.2"
+    "fpdf2>=2.7.0"
 ]
