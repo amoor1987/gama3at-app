@@ -40,7 +40,7 @@ def init_db():
             roles TEXT
         )
     """)
-    for col in [("phone1", "TEXT"), ("phone2", "TEXT"), ("shares", "REAL"), ("roles", "TEXT")]:
+    for col in [("phone1", "TEXT"), ("phone2", "TEXT"), ("shares", "REAL"), ("roles", "TEXT"), ("title", "TEXT")]:
         try:
             cursor.execute(f"ALTER TABLE members ADD COLUMN {col[0]} {col[1]}")
         except sqlite3.OperationalError:
@@ -107,7 +107,7 @@ def main(page: ft.Page):
         d.open = False
         page.update()
 
-    def get_safe_backup_path():
+    def get_safe_storage_dir():
         base_dir = page.get_app_storage_dir() if hasattr(page, "get_app_storage_dir") else "."
         if not base_dir:
             base_dir = "."
@@ -117,28 +117,25 @@ def main(page: ft.Page):
                 os.makedirs(backup_dir)
             except:
                 backup_dir = "."
-        return os.path.join(backup_dir, "gama3at_backup.db")
+        return backup_dir
 
     def backup_database(e):
         try:
-            target_path = get_safe_backup_path()
+            target_path = os.path.join(get_safe_storage_dir(), "gama3at_backup.db")
             shutil.copy("gama3at.db", target_path)
             
-            def share_backup(ev):
-                if hasattr(page, "launch_url"):
-                    try:
-                        page.launch_url(target_path)
-                    except:
-                        pass
-                dlg.open = False
-                page.update()
+            def share_db(ev):
+                try:
+                    page.share_files([target_path])
+                except:
+                    pass
 
             dlg = ft.AlertDialog(
                 title=ft.Text("تم النسخ الاحتياطي بنجاح!", rtl=True),
-                content=ft.Text("تم حفظ نسخة البيانات في مسار التطبيق الآمن بنجاح.\nهل تريد مشاركة ملف النسخة الاحتياطية (حفظه على الواتساب أو درايف)؟", rtl=True),
+                content=ft.Text(f"تم حفظ النسخة الاحتياطية بأمان.\nهل تريد مشاركة ملف النسخة الآن؟", rtl=True),
                 actions=[
                     ft.TextButton("إلغاء", on_click=lambda ev: close_dlg_generic(dlg)),
-                    ft.ElevatedButton("مشاركة الملف", bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE, on_click=share_backup)
+                    ft.ElevatedButton("مشاركة الملف", icon=ft.Icons.SHARE, bgcolor=ft.Colors.BLUE, color=ft.Colors.WHITE, on_click=share_db)
                 ]
             )
             page.overlay.append(dlg)
@@ -148,7 +145,7 @@ def main(page: ft.Page):
             print(ex)
 
     def restore_database(e):
-        target_path = get_safe_backup_path()
+        target_path = os.path.join(get_safe_storage_dir(), "gama3at_backup.db")
         if os.path.exists(target_path):
             try:
                 shutil.copy(target_path, "gama3at.db")
@@ -219,7 +216,7 @@ def main(page: ft.Page):
         )
 
         backup_restore_row = ft.Row([
-            ft.ElevatedButton("نسخ احتياطي للبيانات", icon=ft.Icons.BACKUP, bgcolor=ft.Colors.BLUE_GREY, color=ft.Colors.WHITE, on_click=backup_database),
+            ft.ElevatedButton("نسخ احتياطي", icon=ft.Icons.BACKUP, bgcolor=ft.Colors.BLUE_GREY, color=ft.Colors.WHITE, on_click=backup_database),
             ft.ElevatedButton("استعادة البيانات", icon=ft.Icons.SETTINGS_BACKUP_RESTORE, bgcolor=ft.Colors.ORANGE, color=ft.Colors.WHITE, on_click=restore_database)
         ], alignment=ft.MainAxisAlignment.CENTER, rtl=True)
 
@@ -334,7 +331,7 @@ def main(page: ft.Page):
         g_amount, g_months, g_start, g_mem_count = g_info if g_info else (0, 0, "", 12)
         max_allowed_months = g_mem_count if g_mem_count else g_months
 
-        cursor.execute("SELECT id, name, phone1, phone2, shares, roles FROM members WHERE gama3a_id = ?", (gama3a_id,))
+        cursor.execute("SELECT id, name, phone1, phone2, shares, roles, title FROM members WHERE gama3a_id = ?", (gama3a_id,))
         rows = cursor.fetchall()
         conn.close()
 
@@ -365,12 +362,13 @@ def main(page: ft.Page):
             conn_db = sqlite3.connect("gama3at.db")
             cur = conn_db.cursor()
             for m in rows:
-                m_id, m_name, p1, p2, shares, roles = m
+                m_id, m_name, p1, p2, shares, roles, m_title = m
                 cur.execute("SELECT status FROM payments WHERE member_id = ? ORDER BY id DESC LIMIT 1", (m_id,))
                 st = cur.fetchone()
                 status_str = st[0] if st else "Not Paid"
                 
-                safe_name = str(m_name).encode('latin-1', 'replace').decode('latin-1')
+                full_display_name = f"{m_title or 'أستاذ'} {m_name}"
+                safe_name = str(full_display_name).encode('latin-1', 'replace').decode('latin-1')
                 safe_status = "Paid" if status_str == "تم السداد" else "Not Paid"
 
                 pdf.cell(50, 8, safe_name, 1)
@@ -384,28 +382,25 @@ def main(page: ft.Page):
             pdf.set_font("Arial", "I", 10)
             pdf.cell(0, 6, "Design and Programming - Eng: Amr El-Sherif (N.O.: 01009191945)", ln=True, align="C")
 
-            file_name = f"Report_{gama3a_id}.pdf"
-            pdf.output(file_name)
+            pdf_path = os.path.join(get_safe_storage_dir(), f"Report_{gama3a_id}.pdf")
+            pdf.output(pdf_path)
             
-            def share_pdf(ev):
-                if hasattr(page, "launch_url"):
-                    try:
-                        page.launch_url(file_name)
-                    except:
-                        pass
-                dlg_success.open = False
-                page.update()
-
             def close_pdf_dlg(ev):
                 dlg_success.open = False
                 page.update()
 
+            def share_pdf_file(ev):
+                try:
+                    page.share_files([pdf_path])
+                except:
+                    pass
+
             dlg_success = ft.AlertDialog(
                 title=ft.Text("تم إنشاء التقرير بنجاح!", rtl=True),
-                content=ft.Text("تم حفظ ملف الـ PDF بنجاح.\nهل تريد مشاركة الملف (إرساله عبر الواتساب أو حفظه)؟", rtl=True),
+                content=ft.Text("تم حفظ ملف الـ PDF. هل تريد مشاركته الآن؟", rtl=True),
                 actions=[
                     ft.TextButton("إلغاء", on_click=close_pdf_dlg),
-                    ft.ElevatedButton("مشاركة الملف", bgcolor=ft.Colors.RED, color=ft.Colors.WHITE, on_click=share_pdf)
+                    ft.ElevatedButton("مشاركة التقرير", icon=ft.Icons.SHARE, bgcolor=ft.Colors.RED, color=ft.Colors.WHITE, on_click=share_pdf_file)
                 ]
             )
             page.overlay.append(dlg_success)
@@ -415,13 +410,13 @@ def main(page: ft.Page):
         def open_guide_dialog(e):
             month_schedule = {i: [] for i in range(1, max_allowed_months + 1)}
             for m in rows:
-                m_id, m_name, p1, p2, shares, roles = m
+                m_id, m_name, p1, p2, shares, roles, m_title = m
                 if roles:
                     for r in roles.replace("،", ",").split(","):
                         if r.strip().isdigit():
                             m_num = int(r.strip())
                             if m_num in month_schedule:
-                                month_schedule[m_num].append(m_name)
+                                month_schedule[m_num].append(f"{m_title or 'أستاذ'} {m_name}")
 
             guide_controls = []
             for m_idx in range(1, max_allowed_months + 1):
@@ -496,6 +491,16 @@ def main(page: ft.Page):
             is_edit = member_data is not None
             m_id = member_data[0] if is_edit else None
 
+            # Dropdown لاختيار اللقب (أستاذ / أستاذة)
+            title_dropdown = ft.Dropdown(
+                label="اللقب",
+                options=[
+                    ft.dropdown.Option("أستاذ"),
+                    ft.dropdown.Option("أستاذة")
+                ],
+                value=member_data[6] if is_edit and len(member_data) > 6 and member_data[6] else "أستاذ"
+            )
+
             name_in = ft.TextField(label="اسم العضو", value=member_data[1] if is_edit else "")
             p1_in = ft.TextField(label="رقم التليفون الأساسي", value=member_data[2] if is_edit else "", keyboard_type=ft.KeyboardType.PHONE)
             p2_in = ft.TextField(label="رقم التليفون الثاني (اختياري)", value=member_data[3] if is_edit else "", keyboard_type=ft.KeyboardType.PHONE)
@@ -561,13 +566,14 @@ def main(page: ft.Page):
                         return
 
                 roles_str = ", ".join(new_roles)
+                selected_title = title_dropdown.value or "أستاذ"
 
                 if is_edit:
-                    cursor.execute("UPDATE members SET name=?, phone1=?, phone2=?, shares=?, roles=? WHERE id=?",
-                                   (name_in.value, p1_in.value, p2_in.value, shares_val, roles_str, m_id))
+                    cursor.execute("UPDATE members SET name=?, phone1=?, phone2=?, shares=?, roles=?, title=? WHERE id=?",
+                                   (name_in.value, p1_in.value, p2_in.value, shares_val, roles_str, selected_title, m_id))
                 else:
-                    cursor.execute("INSERT INTO members (gama3a_id, name, phone1, phone2, shares, roles) VALUES (?, ?, ?, ?, ?, ?)",
-                                   (gama3a_id, name_in.value, p1_in.value, p2_in.value, shares_val, roles_str))
+                    cursor.execute("INSERT INTO members (gama3a_id, name, phone1, phone2, shares, roles, title) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                   (gama3a_id, name_in.value, p1_in.value, p2_in.value, shares_val, roles_str, selected_title))
                 
                 conn.commit()
                 conn.close()
@@ -578,8 +584,8 @@ def main(page: ft.Page):
             dlg = ft.AlertDialog(
                 title=ft.Text("تعديل عضو" if is_edit else "إضافة عضو جديد للجمعية", rtl=True),
                 content=ft.Container(
-                    content=ft.Column([name_in, p1_in, p2_in, shares_in, roles_in, error_text], tight=True, scroll=ft.ScrollMode.AUTO),
-                    height=320
+                    content=ft.Column([title_dropdown, name_in, p1_in, p2_in, shares_in, roles_in, error_text], tight=True, scroll=ft.ScrollMode.AUTO),
+                    height=360
                 ),
                 actions=[
                     ft.TextButton("إلغاء", on_click=close_dlg),
@@ -603,7 +609,8 @@ def main(page: ft.Page):
             members_list.controls.append(ft.Text("لم يتم إضافة أعضاء لهذه الجمعية بعد.", italic=True, rtl=True))
         else:
             for index, m in enumerate(rows):
-                m_id, m_name, p1, p2, shares, roles = m
+                m_id, m_name, p1, p2, shares, roles, m_title = m
+                prefix_title = m_title if m_title else "أستاذ"
 
                 def format_wa_phone(phone):
                     if not phone:
@@ -619,7 +626,8 @@ def main(page: ft.Page):
                     formatted_phone = format_wa_phone(phone_num)
                     if not formatted_phone:
                         return "#"
-                    wa_msg = urllib.parse.quote(f"أهلاً يا أستاذ {m_name}، تذكير بميعاد قسط الجمعية للشهر الحالي. شكراً لحضرتك.")
+                    # رسالة واتساب محترمة جنس العميل بناءً على اللقب المختار
+                    wa_msg = urllib.parse.quote(f"أهلاً يا {prefix_title} {m_name}، تذكير بميعاد قسط الجمعية للشهر الحالي. شكراً لحضرتك.")
                     return f"https://wa.me/{formatted_phone}?text={wa_msg}"
 
                 wa_buttons = []
@@ -696,10 +704,11 @@ def main(page: ft.Page):
 
                 net_payout = total_gross_collection - (shares * g_amount)
 
+                full_name_label = f"{prefix_title} {m_name}"
                 if is_turn_now:
-                    title_text = f"⭐ {m_name} (أسهم: {int(shares) if shares.is_integer() else shares}) [عليه دور القبض | الصافي: {int(net_payout) if net_payout.is_integer() else net_payout} ج.م]"
+                    title_text = f"⭐ {full_name_label} (أسهم: {int(shares) if shares.is_integer() else shares}) [عليه دور القبض | الصافي: {int(net_payout) if net_payout.is_integer() else net_payout} ج.م]"
                 else:
-                    title_text = f"{m_name} (أسهم: {int(shares) if shares.is_integer() else shares})"
+                    title_text = f"{full_name_label} (أسهم: {int(shares) if shares.is_integer() else shares})"
 
                 sub_text_content = f"أشهر القبض: الشهر ({roles or 'غير محدد'})"
 
