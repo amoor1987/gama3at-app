@@ -62,13 +62,17 @@ def main(page: ft.Page):
     page.title = "مدير الجمعيات الذكي"
     page.theme_mode = ft.ThemeMode.LIGHT
     page.vertical_alignment = ft.MainAxisAlignment.START
-    page.padding = 20  # تم التعديل لتجنب الخطأ وتكون متوافقة 100% مع Flet
+    page.padding = 20
     page.scroll = ft.ScrollMode.AUTO
 
     init_db()
 
     current_view_state = ["home"]
     current_gama3a_info = [None, None]
+
+    # تعريف FilePicker بالشكل الصحيح المتوافق تماماً
+    file_picker = ft.FilePicker()
+    page.overlay.append(file_picker)
 
     def handle_back_button(e=None):
         if current_view_state[0] == "details":
@@ -104,61 +108,52 @@ def main(page: ft.Page):
         return rows
 
     def backup_database(e):
-        try:
-            downloads_path = str(Path.home() / "Downloads")
-            if not os.path.exists(downloads_path):
-                downloads_path = "."
-                
-            backup_file_name = "gama3at_backup.db"
-            destination_path = os.path.join(downloads_path, backup_file_name)
-            
-            shutil.copy("gama3at.db", destination_path)
-            
-            def close_backup_dlg(ev):
-                dlg.open = False
-                page.update()
+        def on_save_result(e):
+            if e.path:
+                try:
+                    shutil.copy("gama3at.db", e.path)
+                    def close_backup_dlg(ev):
+                        dlg.open = False
+                        page.update()
 
-            dlg = ft.AlertDialog(
-                title=ft.Text("تم النسخ الاحتياطي بنجاح!"),
-                content=ft.Text(f"تم حفظ النسخة في مجلد التنزيلات:\n{backup_file_name}"),
-                actions=[ft.ElevatedButton("حسناً", on_click=close_backup_dlg)]
-            )
-            page.overlay.append(dlg)
-            dlg.open = True
-            page.update()
-        except Exception as ex:
-            print(ex)
+                    dlg = ft.AlertDialog(
+                        title=ft.Text("تم النسخ الاحتياطي بنجاح!"),
+                        content=ft.Text(f"تم حفظ النسخة في المسار:\n{e.path}"),
+                        actions=[ft.ElevatedButton("حسناً", on_click=close_backup_dlg)]
+                    )
+                    page.overlay.append(dlg)
+                    dlg.open = True
+                    page.update()
+                except Exception as ex:
+                    print(ex)
+
+        file_picker.on_result = on_save_result
+        file_picker.save_file(file_name="gama3at_backup.db", dialog_title="اختر مكان حفظ النسخة الاحتياطية")
 
     def restore_database(e):
-        def close_restore_dlg(ev):
-            dlg.open = False
-            page.update()
+        def on_pick_result(e):
+            if e.files and len(e.files) > 0:
+                selected_path = e.files[0].path
+                try:
+                    shutil.copy(selected_path, "gama3at.db")
+                    def close_restore_dlg(ev):
+                        dlg.open = False
+                        page.update()
 
-        downloads_path = str(Path.home() / "Downloads")
-        backup_path_dl = os.path.join(downloads_path, "gama3at_backup.db")
-        
-        target_backup = backup_path_dl if os.path.exists(backup_path_dl) else "gama3at_backup.db"
+                    dlg = ft.AlertDialog(
+                        title=ft.Text("تمت الاستعادة بنجاح!"),
+                        content=ft.Text("تم استعادة جميع البيانات من الملف المختار. يرجى تحديث الشاشة."),
+                        actions=[ft.ElevatedButton("حسناً", on_click=close_restore_dlg)]
+                    )
+                    page.overlay.append(dlg)
+                    dlg.open = True
+                    page.update()
+                    home_view()
+                except Exception as ex:
+                    print(ex)
 
-        if os.path.exists(target_backup):
-            shutil.copy(target_backup, "gama3at.db")
-            dlg = ft.AlertDialog(
-                title=ft.Text("تمت الاستعادة بنجاح!"),
-                content=ft.Text("تم استعادة جميع البيانات من النسخة الاحتياطية. يرجى إعادة تشغيل التطبيق."),
-                actions=[ft.ElevatedButton("حسناً", on_click=close_restore_dlg)]
-            )
-            page.overlay.append(dlg)
-            dlg.open = True
-            page.update()
-            home_view()
-        else:
-            dlg = ft.AlertDialog(
-                title=ft.Text("تنبيه"),
-                content=ft.Text("لم يتم العثور على ملف نسخة احتياطية في مجلد التنزيلات."),
-                actions=[ft.ElevatedButton("حسناً", on_click=close_restore_dlg)]
-            )
-            page.overlay.append(dlg)
-            dlg.open = True
-            page.update()
+        file_picker.on_result = on_pick_result
+        file_picker.pick_files(dialog_title="اختر ملف النسخة الاحتياطية لاستعادته", allowed_extensions=["db"])
 
     def home_view():
         current_view_state[0] = "home"
@@ -166,7 +161,6 @@ def main(page: ft.Page):
         current_gama3a_info[1] = None
         page.clean()
         
-        # استخدام SafeArea عشان شريط الإشعارات العلوي ما يتدخلش في التصميم
         header = ft.SafeArea(
             ft.Row([
                 ft.Icon(ft.Icons.SAVINGS, color=ft.Colors.GREEN, size=30),
@@ -273,7 +267,8 @@ def main(page: ft.Page):
 
         footer_info = ft.Text("Design and Programming | Eng: Amr El-Sherif | N.O.: 01009191945", size=11, color=ft.Colors.GREY, text_align=ft.TextAlign.CENTER)
 
-        page.add(header, backup_restore_row, ft.Divider(), gama3at_list, add_btn, ft.Divider(), footer_info)
+        # إضافة الـ file_picker كعنصر مخفي داخل الصفحة لضمان عدم ظهور المربع الأحمر أبداً
+        page.add(header, backup_restore_row, ft.Divider(), gama3at_list, add_btn, ft.Divider(), footer_info, file_picker)
         page.update()
 
     def gama3a_details_view(gama3a_id, gama3a_name):
@@ -331,21 +326,27 @@ def main(page: ft.Page):
             pdf.set_font("Arial", "I", 10)
             pdf.cell(0, 6, "Design and Programming - Eng: Amr El-Sherif (N.O.: 01009191945)", ln=True, align="C")
 
-            file_name = f"Report_{gama3a_name}.pdf"
-            pdf.output(file_name)
-            
-            def close_pdf_dlg(ev):
-                dlg_success.open = False
+            def on_pdf_save(e):
+                if e.path:
+                    try:
+                        pdf.output(e.path)
+                        dlg_success = ft.AlertDialog(
+                            title=ft.Text("تم حفظ التقرير بنجاح!"),
+                            content=ft.Text(f"تم حفظ ملف الـ PDF في المسار:\n{e.path}"),
+                            actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: close_pdf_dlg(dlg_success))]
+                        )
+                        page.overlay.append(dlg_success)
+                        dlg_success.open = True
+                        page.update()
+                    except Exception as ex:
+                        print(ex)
+
+            def close_pdf_dlg(d):
+                d.open = False
                 page.update()
 
-            dlg_success = ft.AlertDialog(
-                title=ft.Text("تم إنشاء التقرير بنجاح!"),
-                content=ft.Text(f"تم حفظ ملف الـ PDF باسم:\n{file_name}\nموجود في مجلد التنزيلات."),
-                actions=[ft.ElevatedButton("حسناً", on_click=close_pdf_dlg)]
-            )
-            page.overlay.append(dlg_success)
-            dlg_success.open = True
-            page.update()
+            file_picker.on_result = on_pdf_save
+            file_picker.save_file(file_name=f"Report_{gama3a_name}.pdf", dialog_title="اختر مكان حفظ تقرير الـ PDF")
 
         def open_roles_guide(e):
             guide_dlg = ft.AlertDialog(
@@ -579,7 +580,7 @@ def main(page: ft.Page):
                         ]),
                         padding=10,
                         bgcolor=card_bg,
-                        border_radius=ft.border_radius.all(8)
+                        border_radius=8
                     )
                 )
                 members_list.controls.append(card)
@@ -592,7 +593,7 @@ def main(page: ft.Page):
 
         footer_info = ft.Text("Design and Programming | Eng: Amr El-Sherif | N.O.: 01009191945", size=11, color=ft.Colors.GREY, text_align=ft.TextAlign.CENTER)
 
-        page.add(header, pdf_btn, ft.Divider(), members_list, add_mem_btn, ft.Divider(), footer_info)
+        page.add(header, pdf_btn, ft.Divider(), members_list, add_mem_btn, ft.Divider(), footer_info, file_picker)
         page.update()
 
     home_view()
