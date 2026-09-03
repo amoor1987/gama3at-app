@@ -4,6 +4,7 @@ import urllib.parse
 import os
 import shutil
 from pathlib import Path
+from datetime import datetime
 from fpdf import FPDF
 
 def init_db():
@@ -70,10 +71,6 @@ def main(page: ft.Page):
     current_view_state = ["home"]
     current_gama3a_info = [None, None]
 
-    # التعريف السليم في الـ Overlay عشان ميفهرش أي مربعات حمراء
-    file_picker = ft.FilePicker()
-    page.overlay.append(file_picker)
-
     def handle_back_button(e=None):
         if current_view_state[0] == "details":
             home_view()
@@ -86,8 +83,8 @@ def main(page: ft.Page):
                 page.window_close()
 
             exit_dlg = ft.AlertDialog(
-                title=ft.Text("تأكيد الخروج"),
-                content=ft.Text("هل تريد الخروج من البرنامج؟"),
+                title=ft.Text("تأكيد الخروج", rtl=True),
+                content=ft.Text("هل تريد الخروج من البرنامج؟", rtl=True),
                 actions=[
                     ft.TextButton("لا", on_click=close_exit_dlg),
                     ft.ElevatedButton("نعم", bgcolor=ft.Colors.RED, color=ft.Colors.WHITE, on_click=confirm_exit)
@@ -108,52 +105,61 @@ def main(page: ft.Page):
         return rows
 
     def backup_database(e):
-        def on_save_result(e):
-            if e.path:
-                try:
-                    shutil.copy("gama3at.db", e.path)
-                    def close_backup_dlg(ev):
-                        dlg.open = False
-                        page.update()
+        try:
+            downloads_path = str(Path.home() / "Downloads")
+            if not os.path.exists(downloads_path):
+                downloads_path = "."
+                
+            backup_file_name = "gama3at_backup.db"
+            destination_path = os.path.join(downloads_path, backup_file_name)
+            
+            shutil.copy("gama3at.db", destination_path)
+            
+            def close_backup_dlg(ev):
+                dlg.open = False
+                page.update()
 
-                    dlg = ft.AlertDialog(
-                        title=ft.Text("تم النسخ الاحتياطي بنجاح!"),
-                        content=ft.Text(f"تم حفظ النسخة في المسار:\n{e.path}"),
-                        actions=[ft.ElevatedButton("حسناً", on_click=close_backup_dlg)]
-                    )
-                    page.overlay.append(dlg)
-                    dlg.open = True
-                    page.update()
-                except Exception as ex:
-                    print(ex)
-
-        file_picker.on_result = on_save_result
-        file_picker.save_file(file_name="gama3at_backup.db", dialog_title="اختر مكان حفظ النسخة الاحتياطية")
+            dlg = ft.AlertDialog(
+                title=ft.Text("تم النسخ الاحتياطي بنجاح!", rtl=True),
+                content=ft.Text(f"تم حفظ النسخة في مجلد التنزيلات:\n{backup_file_name}", rtl=True),
+                actions=[ft.ElevatedButton("حسناً", on_click=close_backup_dlg)]
+            )
+            page.overlay.append(dlg)
+            dlg.open = True
+            page.update()
+        except Exception as ex:
+            print(ex)
 
     def restore_database(e):
-        def on_pick_result(e):
-            if e.files and len(e.files) > 0:
-                selected_path = e.files[0].path
-                try:
-                    shutil.copy(selected_path, "gama3at.db")
-                    def close_restore_dlg(ev):
-                        dlg.open = False
-                        page.update()
+        def close_restore_dlg(ev):
+            dlg.open = False
+            page.update()
 
-                    dlg = ft.AlertDialog(
-                        title=ft.Text("تمت الاستعادة بنجاح!"),
-                        content=ft.Text("تم استعادة جميع البيانات من الملف المختار. يرجى تحديث الشاشة."),
-                        actions=[ft.ElevatedButton("حسناً", on_click=close_restore_dlg)]
-                    )
-                    page.overlay.append(dlg)
-                    dlg.open = True
-                    page.update()
-                    home_view()
-                except Exception as ex:
-                    print(ex)
+        downloads_path = str(Path.home() / "Downloads")
+        backup_path_dl = os.path.join(downloads_path, "gama3at_backup.db")
+        
+        target_backup = backup_path_dl if os.path.exists(backup_path_dl) else "gama3at_backup.db"
 
-        file_picker.on_result = on_pick_result
-        file_picker.pick_files(dialog_title="اختر ملف النسخة الاحتياطية لاستعادته", allowed_extensions=["db"])
+        if os.path.exists(target_backup):
+            shutil.copy(target_backup, "gama3at.db")
+            dlg = ft.AlertDialog(
+                title=ft.Text("تمت الاستعادة بنجاح!", rtl=True),
+                content=ft.Text("تم استعادة جميع البيانات من النسخة الاحتياطية. يرجى إعادة تشغيل التطبيق.", rtl=True),
+                actions=[ft.ElevatedButton("حسناً", on_click=close_restore_dlg)]
+            )
+            page.overlay.append(dlg)
+            dlg.open = True
+            page.update()
+            home_view()
+        else:
+            dlg = ft.AlertDialog(
+                title=ft.Text("تنبيه", rtl=True),
+                content=ft.Text("لم يتم العثور على ملف نسخة احتياطية في مجلد التنزيلات.", rtl=True),
+                actions=[ft.ElevatedButton("حسناً", on_click=close_restore_dlg)]
+            )
+            page.overlay.append(dlg)
+            dlg.open = True
+            page.update()
 
     def home_view():
         current_view_state[0] = "home"
@@ -165,13 +171,13 @@ def main(page: ft.Page):
             ft.Row([
                 ft.Icon(ft.Icons.SAVINGS, color=ft.Colors.GREEN, size=30),
                 ft.Text("إدارة الجمعيات المالية", size=22, weight=ft.FontWeight.BOLD)
-            ], alignment=ft.MainAxisAlignment.CENTER)
+            ], alignment=ft.MainAxisAlignment.CENTER, rtl=True)
         )
 
         backup_restore_row = ft.Row([
             ft.ElevatedButton("نسخ احتياطي للبيانات", icon=ft.Icons.BACKUP, bgcolor=ft.Colors.BLUE_GREY, color=ft.Colors.WHITE, on_click=backup_database),
             ft.ElevatedButton("استعادة البيانات", icon=ft.Icons.SETTINGS_BACKUP_RESTORE, bgcolor=ft.Colors.ORANGE, color=ft.Colors.WHITE, on_click=restore_database)
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        ], alignment=ft.MainAxisAlignment.CENTER, rtl=True)
 
         gama3at_list = ft.Column(spacing=10)
         rows = get_gama3at()
@@ -222,7 +228,7 @@ def main(page: ft.Page):
                         page.update()
 
             dlg = ft.AlertDialog(
-                title=ft.Text("إنشاء جمعية جديدة"),
+                title=ft.Text("إنشاء جمعية جديدة", rtl=True),
                 content=ft.Column([name_input, amount_input, members_count_input, months_list_dropdown, year_input, err_txt], tight=True, scroll=ft.ScrollMode.AUTO),
                 actions=[
                     ft.TextButton("إلغاء", on_click=close_dlg),
@@ -235,7 +241,7 @@ def main(page: ft.Page):
             page.update()
 
         if not rows:
-            gama3at_list.controls.append(ft.Text("لا توجد جمعيات مسجلة حالياً. اضغط على زر الإضافة أدناه.", italic=True))
+            gama3at_list.controls.append(ft.Text("لا توجد جمعيات مسجلة حالياً. اضغط على زر الإضافة أدناه.", italic=True, rtl=True))
         else:
             for g in rows:
                 g_id, g_name, g_amount, g_months, g_start, g_mem_count = g
@@ -247,12 +253,12 @@ def main(page: ft.Page):
                         content=ft.Column([
                             ft.ListTile(
                                 leading=ft.Icon(ft.Icons.GROUP_WORK, color=ft.Colors.BLUE),
-                                title=ft.Text(g_name, weight=ft.FontWeight.BOLD, size=16),
-                                subtitle=ft.Text(f"السهم: {g_amount} ج.م | الشهور: {g_months} | إجمالي القبض: {total_payout} ج.م\nالبداية: {g_start or 'غير محدد'}"),
+                                title=ft.Text(g_name, weight=ft.FontWeight.BOLD, size=16, rtl=True),
+                                subtitle=ft.Text(f"السهم: {g_amount} ج.م | الشهور: {g_months} | إجمالي القبض: {total_payout} ج.م\nالبداية: {g_start or 'غير محدد'}", rtl=True),
                             ),
                             ft.Row([
                                 ft.TextButton("دخول الجمعية", icon=ft.Icons.ARROW_FORWARD, on_click=lambda e, gid=g_id, gname=g_name: gama3a_details_view(gid, gname))
-                            ], alignment=ft.MainAxisAlignment.END)
+                            ], alignment=ft.MainAxisAlignment.END, rtl=True)
                         ]),
                         padding=10
                     )
@@ -260,14 +266,13 @@ def main(page: ft.Page):
                 gama3at_list.controls.append(card)
 
         add_btn = ft.ElevatedButton(
-            content=ft.Row([ft.Icon(ft.Icons.ADD, color=ft.Colors.WHITE), ft.Text("جمعية جديدة", color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER),
+            content=ft.Row([ft.Icon(ft.Icons.ADD, color=ft.Colors.WHITE), ft.Text("جمعية جديدة", color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER, rtl=True),
             bgcolor=ft.Colors.GREEN,
             on_click=open_add_gama3a
         )
 
         footer_info = ft.Text("Design and Programming | Eng: Amr El-Sherif | N.O.: 01009191945", size=11, color=ft.Colors.GREY, text_align=ft.TextAlign.CENTER)
 
-        # تم إزالة file_picker من هنا تماماً لأنه مضاف في الـ overlay بالأعلى بصورة صحيحة
         page.add(header, backup_restore_row, ft.Divider(), gama3at_list, add_btn, ft.Divider(), footer_info)
         page.update()
 
@@ -287,6 +292,9 @@ def main(page: ft.Page):
         cursor.execute("SELECT id, name, phone1, phone2, shares, roles FROM members WHERE gama3a_id = ?", (gama3a_id,))
         rows = cursor.fetchall()
         conn.close()
+
+        total_gross_collection = g_amount * (g_mem_count or g_months or 1)
+        current_month_number = datetime.now().month
 
         def generate_pdf(e):
             pdf = FPDF()
@@ -326,32 +334,72 @@ def main(page: ft.Page):
             pdf.set_font("Arial", "I", 10)
             pdf.cell(0, 6, "Design and Programming - Eng: Amr El-Sherif (N.O.: 01009191945)", ln=True, align="C")
 
-            def on_pdf_save(e):
-                if e.path:
-                    try:
-                        pdf.output(e.path)
-                        dlg_success = ft.AlertDialog(
-                            title=ft.Text("تم حفظ التقرير بنجاح!"),
-                            content=ft.Text(f"تم حفظ ملف الـ PDF في المسار:\n{e.path}"),
-                            actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: close_pdf_dlg(dlg_success))]
-                        )
-                        page.overlay.append(dlg_success)
-                        dlg_success.open = True
-                        page.update()
-                    except Exception as ex:
-                        print(ex)
-
-            def close_pdf_dlg(d):
-                d.open = False
+            file_name = f"Report_{gama3a_name}.pdf"
+            pdf.output(file_name)
+            
+            def close_pdf_dlg(ev):
+                dlg_success.open = False
                 page.update()
 
-            file_picker.on_result = on_pdf_save
-            file_picker.save_file(file_name=f"Report_{gama3a_name}.pdf", dialog_title="اختر مكان حفظ تقرير الـ PDF")
+            dlg_success = ft.AlertDialog(
+                title=ft.Text("تم إنشاء التقرير بنجاح!", rtl=True),
+                content=ft.Text(f"تم حفظ ملف الـ PDF باسم:\n{file_name}\nموجود في مجلد التنزيلات.", rtl=True),
+                actions=[ft.ElevatedButton("حسناً", on_click=close_pdf_dlg)]
+            )
+            page.overlay.append(dlg_success)
+            dlg_success.open = True
+            page.update()
+
+        # نافذة الدليل الاسترشادي للشهور
+        def open_guide_dialog(e):
+            month_schedule = {i: [] for i in range(1, max_allowed_months + 1)}
+            for m in rows:
+                m_id, m_name, p1, p2, shares, roles = m
+                if roles:
+                    for r in roles.replace("،", ",").split(","):
+                        if r.strip().isdigit():
+                            m_num = int(r.strip())
+                            if m_num in month_schedule:
+                                month_schedule[m_num].append(m_name)
+
+            guide_controls = []
+            for m_idx in range(1, max_allowed_months + 1):
+                assigned_members = ", ".join(month_schedule[m_idx]) if month_schedule[m_idx] else "غير محدد"
+                is_current = (m_idx == current_month_number)
+                row_bg = ft.Colors.AMBER_100 if is_current else ft.Colors.TRANSPARENT
+                
+                row_item = ft.Container(
+                    content=ft.Row([
+                        ft.Text(f"الشهر {m_idx}", weight=ft.FontWeight.BOLD, width=80, rtl=True),
+                        ft.Text(f"← {assigned_members}", color=ft.Colors.BLUE_900 if not is_current else ft.Colors.AMBER_900, weight=ft.FontWeight.BOLD if is_current else ft.FontWeight.NORMAL, rtl=True)
+                    ], rtl=True),
+                    padding=8,
+                    bgcolor=row_bg,
+                    border_radius=5
+                )
+                guide_controls.append(row_item)
+
+            def close_guide(ev):
+                guide_dlg.open = False
+                page.update()
+
+            guide_dlg = ft.AlertDialog(
+                title=ft.Text("📖 الدليل الاسترشادي لأدوار الأعضاء", rtl=True),
+                content=ft.Container(
+                    content=ft.Column(guide_controls, tight=True, scroll=ft.ScrollMode.AUTO),
+                    width=350,
+                    height=400
+                ),
+                actions=[ft.ElevatedButton("إغلاق", on_click=close_guide)]
+            )
+            page.overlay.append(guide_dlg)
+            guide_dlg.open = True
+            page.update()
 
         def open_roles_guide(e):
             guide_dlg = ft.AlertDialog(
-                title=ft.Text("دليل معرفة وحساب الأدوار"),
-                content=ft.Text(f"نظام الأدوار يتم إدخاله يدوياً لكل عضو عبر أرقام الشهور (مثلاً: 1, 5). السيستم يتحقق تلقائياً من عدم تكرار نفس الشهر لأكثر من عضو، ويحذر إذا تجاوز الشهر عدد أشهر الجمعية الكلي ({max_allowed_months})."),
+                title=ft.Text("دليل معرفة وحساب الأدوار", rtl=True),
+                content=ft.Text(f"نظام الأدوار يتم إدخاله يدوياً لكل عضو عبر أرقام الشهور. يجب أن يتطابق عدد أشهر القبض تماماً مع عدد الأسهم. السيستم يحسب تلقائياً صافي المبلغ المستلم.", rtl=True),
                 actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: close_g(guide_dlg))]
             )
             def close_g(d):
@@ -364,13 +412,20 @@ def main(page: ft.Page):
         header = ft.SafeArea(
             ft.Row([
                 ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=lambda e: home_view()),
-                ft.Text(f"إدارة: {gama3a_name}", size=18, weight=ft.FontWeight.BOLD),
+                ft.Text(f"إدارة: {gama3a_name}", size=18, weight=ft.FontWeight.BOLD, rtl=True),
                 ft.IconButton(icon=ft.Icons.HELP_OUTLINE, icon_color=ft.Colors.BLUE, tooltip="دليل الأدوار", on_click=open_roles_guide)
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, rtl=True)
+        )
+
+        # زرار بارز وصريح خاص بفتح الدليل الاسترشادي للشهور والأدوار بجانب زر الـ PDF
+        guide_btn = ft.ElevatedButton(
+            content=ft.Row([ft.Icon(ft.Icons.MENU_BOOK, color=ft.Colors.WHITE), ft.Text("الدليل الاسترشادي لأدوار الشهور", color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER, rtl=True),
+            bgcolor=ft.Colors.GREEN_700,
+            on_click=open_guide_dialog
         )
 
         pdf_btn = ft.ElevatedButton(
-            content=ft.Row([ft.Icon(ft.Icons.PICTURE_AS_PDF, color=ft.Colors.WHITE), ft.Text("طباعة تقرير الجمعية PDF", color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER),
+            content=ft.Row([ft.Icon(ft.Icons.PICTURE_AS_PDF, color=ft.Colors.WHITE), ft.Text("طباعة تقرير الجمعية PDF", color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER, rtl=True),
             bgcolor=ft.Colors.RED,
             on_click=generate_pdf
         )
@@ -385,9 +440,9 @@ def main(page: ft.Page):
             p1_in = ft.TextField(label="رقم التليفون الأساسي", value=member_data[2] if is_edit else "", keyboard_type=ft.KeyboardType.PHONE)
             p2_in = ft.TextField(label="رقم التليفون الثاني (اختياري)", value=member_data[3] if is_edit else "", keyboard_type=ft.KeyboardType.PHONE)
             shares_in = ft.TextField(label="عدد الأسهم", value=str(member_data[4]) if is_edit else "1", keyboard_type=ft.KeyboardType.NUMBER)
-            roles_in = ft.TextField(label=f"أشهر القبض (أقصى شهر {max_allowed_months}) - مثال: 1, 5", value=member_data[5] if is_edit else "", keyboard_type=ft.KeyboardType.TEXT)
+            roles_in = ft.TextField(label=f"أشهر القبض (مثال: 1, 5) - يجب أن تساوي عدد الأسهم", value=member_data[5] if is_edit else "", keyboard_type=ft.KeyboardType.TEXT)
 
-            error_text = ft.Text("", color=ft.Colors.RED)
+            error_text = ft.Text("", color=ft.Colors.RED, rtl=True)
 
             def close_dlg(e):
                 dlg.open = False
@@ -399,6 +454,11 @@ def main(page: ft.Page):
                     page.update()
                     return
                 
+                try:
+                    shares_val = float(shares_in.value or 1)
+                except ValueError:
+                    shares_val = 1.0
+
                 raw_roles = roles_in.value.replace("،", ",").split(",")
                 new_roles = []
                 for r in raw_roles:
@@ -406,13 +466,18 @@ def main(page: ft.Page):
                     if r_clean.isdigit():
                         month_num = int(r_clean)
                         if month_num > max_allowed_months:
-                            error_text.value = f"تحذير/خطأ: الشهر ({month_num}) يتجاوز عدد أشهر الجمعية الكلي ({max_allowed_months})!"
+                            error_text.value = f"خطأ: الشهر ({month_num}) يتجاوز عدد أشهر الجمعية الكلي ({max_allowed_months})!"
                             page.update()
                             return
                         new_roles.append(r_clean)
 
                 if not new_roles:
                     error_text.value = "خطأ: يجب إدخال أرقام شهور صحيحة (مثل: 1, 2)"
+                    page.update()
+                    return
+
+                if len(new_roles) != int(shares_val):
+                    error_text.value = f"خطأ: عدد أشهر القبض المدخلة ({len(new_roles)}) لا يتطابق مع عدد الأسهم ({int(shares_val)})!"
                     page.update()
                     return
 
@@ -439,10 +504,10 @@ def main(page: ft.Page):
 
                 if is_edit:
                     cursor.execute("UPDATE members SET name=?, phone1=?, phone2=?, shares=?, roles=? WHERE id=?",
-                                   (name_in.value, p1_in.value, p2_in.value, float(shares_in.value or 1), roles_str, m_id))
+                                   (name_in.value, p1_in.value, p2_in.value, shares_val, roles_str, m_id))
                 else:
                     cursor.execute("INSERT INTO members (gama3a_id, name, phone1, phone2, shares, roles) VALUES (?, ?, ?, ?, ?, ?)",
-                                   (gama3a_id, name_in.value, p1_in.value, p2_in.value, float(shares_in.value or 1), roles_str))
+                                   (gama3a_id, name_in.value, p1_in.value, p2_in.value, shares_val, roles_str))
                 
                 conn.commit()
                 conn.close()
@@ -451,7 +516,7 @@ def main(page: ft.Page):
                 gama3a_details_view(gama3a_id, gama3a_name)
 
             dlg = ft.AlertDialog(
-                title=ft.Text("تعديل عضو" if is_edit else "إضافة عضو جديد للجمعية"),
+                title=ft.Text("تعديل عضو" if is_edit else "إضافة عضو جديد للجمعية", rtl=True),
                 content=ft.Container(
                     content=ft.Column([name_in, p1_in, p2_in, shares_in, roles_in, error_text], tight=True, scroll=ft.ScrollMode.AUTO),
                     height=320
@@ -475,7 +540,7 @@ def main(page: ft.Page):
             gama3a_details_view(gama3a_id, gama3a_name)
 
         if not rows:
-            members_list.controls.append(ft.Text("لم يتم إضافة أعضاء لهذه الجمعية بعد.", italic=True))
+            members_list.controls.append(ft.Text("لم يتم إضافة أعضاء لهذه الجمعية بعد.", italic=True, rtl=True))
         else:
             for index, m in enumerate(rows):
                 m_id, m_name, p1, p2, shares, roles = m
@@ -500,13 +565,13 @@ def main(page: ft.Page):
                 wa_buttons = []
                 if p1:
                     wa_buttons.append(ft.ElevatedButton(
-                        content=ft.Row([ft.Icon(ft.Icons.CHAT, color=ft.Colors.WHITE, size=14), ft.Text(f"واتس (1): {p1}", color=ft.Colors.WHITE, size=11)], alignment=ft.MainAxisAlignment.CENTER),
+                        content=ft.Row([ft.Icon(ft.Icons.CHAT, color=ft.Colors.WHITE, size=14), ft.Text(f"واتس (1): {p1}", color=ft.Colors.WHITE, size=11)], alignment=ft.MainAxisAlignment.CENTER, rtl=True),
                         bgcolor=ft.Colors.GREEN,
                         url=send_wa(p1)
                     ))
                 if p2:
                     wa_buttons.append(ft.ElevatedButton(
-                        content=ft.Row([ft.Icon(ft.Icons.CHAT, color=ft.Colors.WHITE, size=14), ft.Text(f"واتس (2): {p2}", color=ft.Colors.WHITE, size=11)], alignment=ft.MainAxisAlignment.CENTER),
+                        content=ft.Row([ft.Icon(ft.Icons.CHAT, color=ft.Colors.WHITE, size=14), ft.Text(f"واتس (2): {p2}", color=ft.Colors.WHITE, size=11)], alignment=ft.MainAxisAlignment.CENTER, rtl=True),
                         bgcolor=ft.Colors.GREEN_700,
                         url=send_wa(p2)
                     ))
@@ -542,7 +607,7 @@ def main(page: ft.Page):
                         page.update()
 
                     pay_dlg = ft.AlertDialog(
-                        title=ft.Text(f"تحديث حالة السداد: {mname}"),
+                        title=ft.Text(f"تحديث حالة السداد: {mname}", rtl=True),
                         content=status_dropdown,
                         actions=[
                             ft.TextButton("إلغاء", on_click=close_pay_dlg),
@@ -560,23 +625,37 @@ def main(page: ft.Page):
                     on_click=open_payment_dialog
                 )
 
-                is_turn_now = (index == 0)
+                member_roles_list = []
+                if roles:
+                    for r in roles.replace("،", ",").split(","):
+                        if r.strip().isdigit():
+                            member_roles_list.append(int(r.strip()))
+                
+                is_turn_now = current_month_number in member_roles_list
                 card_bg = ft.Colors.AMBER_50 if is_turn_now else ft.Colors.WHITE
-                title_text = f"⭐ {m_name} (أسهم: {shares}) [عليه دور القبض]" if is_turn_now else f"{m_name} (أسهم: {shares})"
+
+                net_payout = total_gross_collection - (shares * g_amount)
+
+                if is_turn_now:
+                    title_text = f"⭐ {m_name} (أسهم: {int(shares) if shares.is_integer() else shares}) [عليه دور القبض | الصافي: {int(net_payout) if net_payout.is_integer() else net_payout} ج.م]"
+                else:
+                    title_text = f"{m_name} (أسهم: {int(shares) if shares.is_integer() else shares})"
+
+                sub_text_content = f"أشهر القبض: الشهر ({roles or 'غير محدد'})"
 
                 card = ft.Card(
                     content=ft.Container(
                         content=ft.Column([
                             ft.ListTile(
                                 leading=ft.Icon(ft.Icons.PERSON, color=ft.Colors.AMBER_900 if is_turn_now else ft.Colors.BLUE),
-                                title=ft.Text(title_text, weight=ft.FontWeight.BOLD),
-                                subtitle=ft.Text(f"أشهر القبض: الشهر ({roles or 'غير محدد'}) \nالأرقام: {p1} {f' - {p2}' if p2 else ''}"),
+                                title=ft.Text(title_text, weight=ft.FontWeight.BOLD, rtl=True),
+                                subtitle=ft.Text(sub_text_content, rtl=True),
                                 trailing=ft.Row([
                                     ft.IconButton(icon=ft.Icons.EDIT, icon_color=ft.Colors.BLUE, tooltip="تعديل", on_click=lambda e, md=m: open_add_member(e, member_data=md)),
                                     ft.IconButton(icon=ft.Icons.DELETE, icon_color=ft.Colors.RED, tooltip="حذف", on_click=lambda e, mid=m_id: delete_member(mid))
-                                ], tight=True)
+                                ], tight=True, rtl=True)
                             ),
-                            ft.Row([pay_action_btn] + wa_buttons, alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True)
+                            ft.Row([pay_action_btn] + wa_buttons, alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True, rtl=True)
                         ]),
                         padding=10,
                         bgcolor=card_bg,
@@ -586,14 +665,15 @@ def main(page: ft.Page):
                 members_list.controls.append(card)
 
         add_mem_btn = ft.ElevatedButton(
-            content=ft.Row([ft.Icon(ft.Icons.PERSON_ADD, color=ft.Colors.WHITE), ft.Text("إضافة عضو", color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER),
+            content=ft.Row([ft.Icon(ft.Icons.PERSON_ADD, color=ft.Colors.WHITE), ft.Text("إضافة عضو", color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER, rtl=True),
             bgcolor=ft.Colors.BLUE,
             on_click=open_add_member
         )
 
         footer_info = ft.Text("Design and Programming | Eng: Amr El-Sherif | N.O.: 01009191945", size=11, color=ft.Colors.GREY, text_align=ft.TextAlign.CENTER)
 
-        page.add(header, backup_restore_row, ft.Divider(), gama3at_list, add_btn, ft.Divider(), footer_info)
+        # تم وضع زرار الدليل الاسترشادي بوضوح بجانب زر طباعة التقرير
+        page.add(header, guide_btn, pdf_btn, ft.Divider(), members_list, add_mem_btn, ft.Divider(), footer_info)
         page.update()
 
     home_view()
