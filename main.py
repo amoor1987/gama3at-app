@@ -24,7 +24,6 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
-    # إضافة عمود total_members لتخزين عدد الأعضاء في الجمعية
     try:
         cursor.execute("ALTER TABLE gama3at ADD COLUMN total_members INTEGER")
     except sqlite3.OperationalError:
@@ -63,15 +62,13 @@ def main(page: ft.Page):
     page.title = "مدير الجمعيات الذكي"
     page.theme_mode = ft.ThemeMode.LIGHT
     page.vertical_alignment = ft.MainAxisAlignment.START
-    # نقطة 1: ضبط مساحة أمان فوق لتجنب تداخل شريط الإشعارات
-    page.padding = ft.padding.only(top=35, left=20, right=20, bottom=20)
+    page.padding = 20  # تم التعديل لتجنب الخطأ وتكون متوافقة 100% مع Flet
     page.scroll = ft.ScrollMode.AUTO
 
     init_db()
 
-    # نقطة 7: التحكم في زر الروجوع (Back button) تدريجياً أو تأكيد الخروج
-    current_view_state = ["home"] # لتتبع احنا فين (home أو details)
-    current_gama3a_info = [None, None] # لتخزين [id, name] لو جوه الجمعية
+    current_view_state = ["home"]
+    current_gama3a_info = [None, None]
 
     def handle_back_button(e=None):
         if current_view_state[0] == "details":
@@ -96,7 +93,6 @@ def main(page: ft.Page):
             exit_dlg.open = True
             page.update()
 
-    # ربط زر الرجوع في الفلاتر/الأندرويد
     page.on_back_press = handle_back_button
 
     def get_gama3at():
@@ -170,10 +166,13 @@ def main(page: ft.Page):
         current_gama3a_info[1] = None
         page.clean()
         
-        header = ft.Row([
-            ft.Icon(ft.Icons.SAVINGS, color=ft.Colors.GREEN, size=30),
-            ft.Text("إدارة الجمعيات المالية", size=22, weight=ft.FontWeight.BOLD)
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        # استخدام SafeArea عشان شريط الإشعارات العلوي ما يتدخلش في التصميم
+        header = ft.SafeArea(
+            ft.Row([
+                ft.Icon(ft.Icons.SAVINGS, color=ft.Colors.GREEN, size=30),
+                ft.Text("إدارة الجمعيات المالية", size=22, weight=ft.FontWeight.BOLD)
+            ], alignment=ft.MainAxisAlignment.CENTER)
+        )
 
         backup_restore_row = ft.Row([
             ft.ElevatedButton("نسخ احتياطي للبيانات", icon=ft.Icons.BACKUP, bgcolor=ft.Colors.BLUE_GREY, color=ft.Colors.WHITE, on_click=backup_database),
@@ -212,7 +211,7 @@ def main(page: ft.Page):
                     try:
                         amt = float(amount_input.value)
                         mem_count = int(members_count_input.value)
-                        total_m = mem_count # نقطة 6: عدد الأشهر الكلي بيساوي عدد الأعضاء تلقائياً
+                        total_m = mem_count
                         start_date_str = f"{months_list_dropdown.value} {year_input.value}"
                         
                         conn = sqlite3.connect("gama3at.db")
@@ -247,14 +246,7 @@ def main(page: ft.Page):
             for g in rows:
                 g_id, g_name, g_amount, g_months, g_start, g_mem_count = g
                 
-                # نقطة 8: حساب وإظهار إجمالي مبلغ القبض من بره على الكارت
-                conn_tmp = sqlite3.connect("gama3at.db")
-                cur_tmp = conn_tmp.cursor()
-                cur_tmp.execute("SELECT SUM(shares) FROM members WHERE gama3a_id = ?", (g_id,))
-                total_shares_res = cur_tmp.fetchone()[0] or 0
-                conn_tmp.close()
-                
-                total_payout = g_amount * (g_mem_count or g_months or 1) # إجمالي مبلغ القبض للجمعية
+                total_payout = g_amount * (g_mem_count or g_months or 1)
 
                 card = ft.Card(
                     content=ft.Container(
@@ -300,11 +292,6 @@ def main(page: ft.Page):
         cursor.execute("SELECT id, name, phone1, phone2, shares, roles FROM members WHERE gama3a_id = ?", (gama3a_id,))
         rows = cursor.fetchall()
         conn.close()
-
-        # حساب الشهر الحالي الافتراضي أو معرفة رقم الشهر التجريبي لتحديد من عليه الدور
-        # لنفترض أننا نحدد العضو الذي عليه دور القبض بناءً على الشهر الحالي أو ترتيب الأشهر
-        # نقطة 2 و 3: تحديد من عليه الدور بناءً على الشهر الحالي (أو اول شهر متاح لم يسحب أو تقريب افتراضي)
-        # لتحديد من عليه الدور بوضوح، سنفترض الشهر الحالي هو الشهر الأول أو حسب رغبة السيستم، سنميز العضو الذي دوره يتطابق مع شهر حالي أو أول عضو.
 
         def generate_pdf(e):
             pdf = FPDF()
@@ -360,11 +347,10 @@ def main(page: ft.Page):
             dlg_success.open = True
             page.update()
 
-        # نقطة 3: زرار أو طريقة لمعرفة تفاصيل ودليل الأدوار
         def open_roles_guide(e):
             guide_dlg = ft.AlertDialog(
                 title=ft.Text("دليل معرفة وحساب الأدوار"),
-                content=ft.Text("نظام الأدوار يتم إدخاله يدوياً لكل عضو عبر أرقام الشهور (مثلاً: 1, 5). السيستم يتحقق تلقائياً من عدم تكرار نفس الشهر لأكثر من عضو، ويحذر إذا تجاوز الشهر عدد أشهر الجمعية الكلي ({max_allowed_months}).").format(max_allowed_months=max_allowed_months),
+                content=ft.Text(f"نظام الأدوار يتم إدخاله يدوياً لكل عضو عبر أرقام الشهور (مثلاً: 1, 5). السيستم يتحقق تلقائياً من عدم تكرار نفس الشهر لأكثر من عضو، ويحذر إذا تجاوز الشهر عدد أشهر الجمعية الكلي ({max_allowed_months})."),
                 actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: close_g(guide_dlg))]
             )
             def close_g(d):
@@ -374,11 +360,13 @@ def main(page: ft.Page):
             guide_dlg.open = True
             page.update()
 
-        header = ft.Row([
-            ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=lambda e: home_view()),
-            ft.Text(f"إدارة: {gama3a_name}", size=18, weight=ft.FontWeight.BOLD),
-            ft.IconButton(icon=ft.Icons.HELP_OUTLINE, icon_color=ft.Colors.BLUE, tooltip="دليل الأدوار", on_click=open_roles_guide)
-        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        header = ft.SafeArea(
+            ft.Row([
+                ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=lambda e: home_view()),
+                ft.Text(f"إدارة: {gama3a_name}", size=18, weight=ft.FontWeight.BOLD),
+                ft.IconButton(icon=ft.Icons.HELP_OUTLINE, icon_color=ft.Colors.BLUE, tooltip="دليل الأدوار", on_click=open_roles_guide)
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        )
 
         pdf_btn = ft.ElevatedButton(
             content=ft.Row([ft.Icon(ft.Icons.PICTURE_AS_PDF, color=ft.Colors.WHITE), ft.Text("طباعة تقرير الجمعية PDF", color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER),
@@ -416,7 +404,6 @@ def main(page: ft.Page):
                     r_clean = r.strip()
                     if r_clean.isdigit():
                         month_num = int(r_clean)
-                        # نقطة 6: تحذير لو الشهر تجاوز الحد الأقصى لأشهر الجمعية
                         if month_num > max_allowed_months:
                             error_text.value = f"تحذير/خطأ: الشهر ({month_num}) يتجاوز عدد أشهر الجمعية الكلي ({max_allowed_months})!"
                             page.update()
@@ -462,7 +449,6 @@ def main(page: ft.Page):
                 page.update()
                 gama3a_details_view(gama3a_id, gama3a_name)
 
-            # نقطة 5: استخدام ListView بداخل حوار إضافة العضو وتفعيل الـ Scroll لتجنب مشكلة الكيبورد والخانات الأخيرة
             dlg = ft.AlertDialog(
                 title=ft.Text("تعديل عضو" if is_edit else "إضافة عضو جديد للجمعية"),
                 content=ft.Container(
@@ -490,11 +476,9 @@ def main(page: ft.Page):
         if not rows:
             members_list.controls.append(ft.Text("لم يتم إضافة أعضاء لهذه الجمعية بعد.", italic=True))
         else:
-            # لمعرفة من عليه الدور (سنعتبر أول عضو لم يسدد أو أول عضو بالقائمة كمثال توضيحي، أو نقوم بتمييز أول عضو كمن عليه الدور الحالي مع نجمة)
             for index, m in enumerate(rows):
                 m_id, m_name, p1, p2, shares, roles = m
 
-                # نقطة 9: تصحيح رقم التليفون وإضافة كود مصر الثابت (+2) للواتساب تلقائياً
                 def format_wa_phone(phone):
                     if not phone:
                         return ""
@@ -534,7 +518,6 @@ def main(page: ft.Page):
                 
                 current_status = pay_status[0] if pay_status else "لم يُسدد"
 
-                # نقطة 4: أمان زر السداد (عبر حوار تأكيد واختيار بدل الضغطة المباشرة الخطرة)
                 def open_payment_dialog(e, mid=m_id, mname=m_name, cur_st=current_status):
                     status_dropdown = ft.Dropdown(
                         label="حالة السداد",
@@ -576,8 +559,7 @@ def main(page: ft.Page):
                     on_click=open_payment_dialog
                 )
 
-                # نقطة 2: تمييز العضو الذي عليه الدور (أول عضو في القائمة كمثال أو حسب الشهور) بنجمة وخلفية مميزة
-                is_turn_now = (index == 0) # العضو الأول كمثال رئيسي عليه الدور
+                is_turn_now = (index == 0)
                 card_bg = ft.Colors.AMBER_50 if is_turn_now else ft.Colors.WHITE
                 title_text = f"⭐ {m_name} (أسهم: {shares}) [عليه دور القبض]" if is_turn_now else f"{m_name} (أسهم: {shares})"
 
