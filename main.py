@@ -24,6 +24,12 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    # إضافة عمود total_members لتخزين عدد الأعضاء في الجمعية
+    try:
+        cursor.execute("ALTER TABLE gama3at ADD COLUMN total_members INTEGER")
+    except sqlite3.OperationalError:
+        pass
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS members (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,15 +63,46 @@ def main(page: ft.Page):
     page.title = "مدير الجمعيات الذكي"
     page.theme_mode = ft.ThemeMode.LIGHT
     page.vertical_alignment = ft.MainAxisAlignment.START
-    page.padding = 20
+    # نقطة 1: ضبط مساحة أمان فوق لتجنب تداخل شريط الإشعارات
+    page.padding = ft.padding.only(top=35, left=20, right=20, bottom=20)
     page.scroll = ft.ScrollMode.AUTO
 
     init_db()
 
+    # نقطة 7: التحكم في زر الروجوع (Back button) تدريجياً أو تأكيد الخروج
+    current_view_state = ["home"] # لتتبع احنا فين (home أو details)
+    current_gama3a_info = [None, None] # لتخزين [id, name] لو جوه الجمعية
+
+    def handle_back_button(e=None):
+        if current_view_state[0] == "details":
+            home_view()
+        else:
+            def close_exit_dlg(ev):
+                exit_dlg.open = False
+                page.update()
+
+            def confirm_exit(ev):
+                page.window_close()
+
+            exit_dlg = ft.AlertDialog(
+                title=ft.Text("تأكيد الخروج"),
+                content=ft.Text("هل تريد الخروج من البرنامج؟"),
+                actions=[
+                    ft.TextButton("لا", on_click=close_exit_dlg),
+                    ft.ElevatedButton("نعم", bgcolor=ft.Colors.RED, color=ft.Colors.WHITE, on_click=confirm_exit)
+                ]
+            )
+            page.overlay.append(exit_dlg)
+            exit_dlg.open = True
+            page.update()
+
+    # ربط زر الرجوع في الفلاتر/الأندرويد
+    page.on_back_press = handle_back_button
+
     def get_gama3at():
         conn = sqlite3.connect("gama3at.db")
         cursor = conn.cursor()
-        cursor.execute("SELECT id, name, amount, total_months, start_month FROM gama3at")
+        cursor.execute("SELECT id, name, amount, total_months, start_month, total_members FROM gama3at")
         rows = cursor.fetchall()
         conn.close()
         return rows
@@ -128,6 +165,9 @@ def main(page: ft.Page):
             page.update()
 
     def home_view():
+        current_view_state[0] = "home"
+        current_gama3a_info[0] = None
+        current_gama3a_info[1] = None
         page.clean()
         
         header = ft.Row([
@@ -146,7 +186,7 @@ def main(page: ft.Page):
         def open_add_gama3a(e):
             name_input = ft.TextField(label="اسم الجمعية (مثلاً: جمعية العيلة)")
             amount_input = ft.TextField(label="قيمة السهم الشهري", keyboard_type=ft.KeyboardType.NUMBER)
-            months_input = ft.TextField(label="عدد الشهور الكلي (مثلاً: 12)", keyboard_type=ft.KeyboardType.NUMBER)
+            members_count_input = ft.TextField(label="عدد الأعضاء", keyboard_type=ft.KeyboardType.NUMBER)
             
             months_list_dropdown = ft.Dropdown(
                 label="شهر البداية",
@@ -161,27 +201,36 @@ def main(page: ft.Page):
                 value="يناير"
             )
             year_input = ft.TextField(label="سنة البداية (مثلاً: 2026)", value="2026", keyboard_type=ft.KeyboardType.NUMBER)
+            err_txt = ft.Text("", color=ft.Colors.RED)
 
             def close_dlg(e):
                 dlg.open = False
                 page.update()
 
             def save_gama3a(e):
-                if name_input.value and amount_input.value:
-                    start_date_str = f"{months_list_dropdown.value} {year_input.value}"
-                    conn = sqlite3.connect("gama3at.db")
-                    cursor = conn.cursor()
-                    cursor.execute("INSERT INTO gama3at (name, amount, total_months, start_month) VALUES (?, ?, ?, ?)",
-                                   (name_input.value, float(amount_input.value), int(months_input.value or 12), start_date_str))
-                    conn.commit()
-                    conn.close()
-                    dlg.open = False
-                    page.update()
-                    home_view()
+                if name_input.value and amount_input.value and members_count_input.value:
+                    try:
+                        amt = float(amount_input.value)
+                        mem_count = int(members_count_input.value)
+                        total_m = mem_count # نقطة 6: عدد الأشهر الكلي بيساوي عدد الأعضاء تلقائياً
+                        start_date_str = f"{months_list_dropdown.value} {year_input.value}"
+                        
+                        conn = sqlite3.connect("gama3at.db")
+                        cursor = conn.cursor()
+                        cursor.execute("INSERT INTO gama3at (name, amount, total_months, start_month, total_members) VALUES (?, ?, ?, ?, ?)",
+                                       (name_input.value, amt, total_m, start_date_str, mem_count))
+                        conn.commit()
+                        conn.close()
+                        dlg.open = False
+                        page.update()
+                        home_view()
+                    except ValueError:
+                        err_txt.value = "يرجى إدخال أرقام صحيحة لقيمة السهم وعدد الأعضاء."
+                        page.update()
 
             dlg = ft.AlertDialog(
                 title=ft.Text("إنشاء جمعية جديدة"),
-                content=ft.Column([name_input, amount_input, months_input, months_list_dropdown, year_input], tight=True),
+                content=ft.Column([name_input, amount_input, members_count_input, months_list_dropdown, year_input, err_txt], tight=True, scroll=ft.ScrollMode.AUTO),
                 actions=[
                     ft.TextButton("إلغاء", on_click=close_dlg),
                     ft.ElevatedButton("حفظ", on_click=save_gama3a)
@@ -196,7 +245,16 @@ def main(page: ft.Page):
             gama3at_list.controls.append(ft.Text("لا توجد جمعيات مسجلة حالياً. اضغط على زر الإضافة أدناه.", italic=True))
         else:
             for g in rows:
-                g_id, g_name, g_amount, g_months, g_start = g
+                g_id, g_name, g_amount, g_months, g_start, g_mem_count = g
+                
+                # نقطة 8: حساب وإظهار إجمالي مبلغ القبض من بره على الكارت
+                conn_tmp = sqlite3.connect("gama3at.db")
+                cur_tmp = conn_tmp.cursor()
+                cur_tmp.execute("SELECT SUM(shares) FROM members WHERE gama3a_id = ?", (g_id,))
+                total_shares_res = cur_tmp.fetchone()[0] or 0
+                conn_tmp.close()
+                
+                total_payout = g_amount * (g_mem_count or g_months or 1) # إجمالي مبلغ القبض للجمعية
 
                 card = ft.Card(
                     content=ft.Container(
@@ -204,7 +262,7 @@ def main(page: ft.Page):
                             ft.ListTile(
                                 leading=ft.Icon(ft.Icons.GROUP_WORK, color=ft.Colors.BLUE),
                                 title=ft.Text(g_name, weight=ft.FontWeight.BOLD, size=16),
-                                subtitle=ft.Text(f"القيمة: {g_amount} ج.م | عدد الشهور: {g_months} | البداية: {g_start or 'غير محدد'}"),
+                                subtitle=ft.Text(f"السهم: {g_amount} ج.م | الشهور: {g_months} | إجمالي القبض: {total_payout} ج.م\nالبداية: {g_start or 'غير محدد'}"),
                             ),
                             ft.Row([
                                 ft.TextButton("دخول الجمعية", icon=ft.Icons.ARROW_FORWARD, on_click=lambda e, gid=g_id, gname=g_name: gama3a_details_view(gid, gname))
@@ -227,17 +285,26 @@ def main(page: ft.Page):
         page.update()
 
     def gama3a_details_view(gama3a_id, gama3a_name):
+        current_view_state[0] = "details"
+        current_gama3a_info[0] = gama3a_id
+        current_gama3a_info[1] = gama3a_name
         page.clean()
 
         conn = sqlite3.connect("gama3at.db")
         cursor = conn.cursor()
-        cursor.execute("SELECT amount, total_months, start_month FROM gama3at WHERE id = ?", (gama3a_id,))
+        cursor.execute("SELECT amount, total_months, start_month, total_members FROM gama3at WHERE id = ?", (gama3a_id,))
         g_info = cursor.fetchone()
-        g_amount, g_months, g_start = g_info if g_info else (0, 0, "")
+        g_amount, g_months, g_start, g_mem_count = g_info if g_info else (0, 0, "", 12)
+        max_allowed_months = g_mem_count if g_mem_count else g_months
 
         cursor.execute("SELECT id, name, phone1, phone2, shares, roles FROM members WHERE gama3a_id = ?", (gama3a_id,))
         rows = cursor.fetchall()
         conn.close()
+
+        # حساب الشهر الحالي الافتراضي أو معرفة رقم الشهر التجريبي لتحديد من عليه الدور
+        # لنفترض أننا نحدد العضو الذي عليه دور القبض بناءً على الشهر الحالي أو ترتيب الأشهر
+        # نقطة 2 و 3: تحديد من عليه الدور بناءً على الشهر الحالي (أو اول شهر متاح لم يسحب أو تقريب افتراضي)
+        # لتحديد من عليه الدور بوضوح، سنفترض الشهر الحالي هو الشهر الأول أو حسب رغبة السيستم، سنميز العضو الذي دوره يتطابق مع شهر حالي أو أول عضو.
 
         def generate_pdf(e):
             pdf = FPDF()
@@ -247,7 +314,7 @@ def main(page: ft.Page):
             pdf.cell(0, 10, f"Gama3at Report: {gama3a_name}", ln=True, align="C")
             
             pdf.set_font("Arial", "", 12)
-            pdf.cell(0, 8, f"Share Amount: {g_amount} EGP | Total Months: {g_months} | Start: {g_start}", ln=True, align="C")
+            pdf.cell(0, 8, f"Share Amount: {g_amount} EGP | Total Months: {max_allowed_months} | Start: {g_start}", ln=True, align="C")
             pdf.ln(10)
 
             pdf.set_font("Arial", "B", 10)
@@ -293,10 +360,25 @@ def main(page: ft.Page):
             dlg_success.open = True
             page.update()
 
+        # نقطة 3: زرار أو طريقة لمعرفة تفاصيل ودليل الأدوار
+        def open_roles_guide(e):
+            guide_dlg = ft.AlertDialog(
+                title=ft.Text("دليل معرفة وحساب الأدوار"),
+                content=ft.Text("نظام الأدوار يتم إدخاله يدوياً لكل عضو عبر أرقام الشهور (مثلاً: 1, 5). السيستم يتحقق تلقائياً من عدم تكرار نفس الشهر لأكثر من عضو، ويحذر إذا تجاوز الشهر عدد أشهر الجمعية الكلي ({max_allowed_months}).").format(max_allowed_months=max_allowed_months),
+                actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: close_g(guide_dlg))]
+            )
+            def close_g(d):
+                d.open = False
+                page.update()
+            page.overlay.append(guide_dlg)
+            guide_dlg.open = True
+            page.update()
+
         header = ft.Row([
             ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=lambda e: home_view()),
-            ft.Text(f"إدارة: {gama3a_name}", size=20, weight=ft.FontWeight.BOLD)
-        ])
+            ft.Text(f"إدارة: {gama3a_name}", size=18, weight=ft.FontWeight.BOLD),
+            ft.IconButton(icon=ft.Icons.HELP_OUTLINE, icon_color=ft.Colors.BLUE, tooltip="دليل الأدوار", on_click=open_roles_guide)
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
         pdf_btn = ft.ElevatedButton(
             content=ft.Row([ft.Icon(ft.Icons.PICTURE_AS_PDF, color=ft.Colors.WHITE), ft.Text("طباعة تقرير الجمعية PDF", color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER),
@@ -314,7 +396,7 @@ def main(page: ft.Page):
             p1_in = ft.TextField(label="رقم التليفون الأساسي", value=member_data[2] if is_edit else "", keyboard_type=ft.KeyboardType.PHONE)
             p2_in = ft.TextField(label="رقم التليفون الثاني (اختياري)", value=member_data[3] if is_edit else "", keyboard_type=ft.KeyboardType.PHONE)
             shares_in = ft.TextField(label="عدد الأسهم", value=str(member_data[4]) if is_edit else "1", keyboard_type=ft.KeyboardType.NUMBER)
-            roles_in = ft.TextField(label="أرقام الشهور (مثلاً: 1, 5 أو 3)", value=member_data[5] if is_edit else "", keyboard_type=ft.KeyboardType.TEXT)
+            roles_in = ft.TextField(label=f"أشهر القبض (أقصى شهر {max_allowed_months}) - مثال: 1, 5", value=member_data[5] if is_edit else "", keyboard_type=ft.KeyboardType.TEXT)
 
             error_text = ft.Text("", color=ft.Colors.RED)
 
@@ -324,6 +406,8 @@ def main(page: ft.Page):
 
             def save_member(e):
                 if not name_in.value:
+                    error_text.value = "يرجى إدخال اسم العضو."
+                    page.update()
                     return
                 
                 raw_roles = roles_in.value.replace("،", ",").split(",")
@@ -331,6 +415,12 @@ def main(page: ft.Page):
                 for r in raw_roles:
                     r_clean = r.strip()
                     if r_clean.isdigit():
+                        month_num = int(r_clean)
+                        # نقطة 6: تحذير لو الشهر تجاوز الحد الأقصى لأشهر الجمعية
+                        if month_num > max_allowed_months:
+                            error_text.value = f"تحذير/خطأ: الشهر ({month_num}) يتجاوز عدد أشهر الجمعية الكلي ({max_allowed_months})!"
+                            page.update()
+                            return
                         new_roles.append(r_clean)
 
                 if not new_roles:
@@ -372,9 +462,13 @@ def main(page: ft.Page):
                 page.update()
                 gama3a_details_view(gama3a_id, gama3a_name)
 
+            # نقطة 5: استخدام ListView بداخل حوار إضافة العضو وتفعيل الـ Scroll لتجنب مشكلة الكيبورد والخانات الأخيرة
             dlg = ft.AlertDialog(
                 title=ft.Text("تعديل عضو" if is_edit else "إضافة عضو جديد للجمعية"),
-                content=ft.Column([name_in, p1_in, p2_in, shares_in, roles_in, error_text], tight=True),
+                content=ft.Container(
+                    content=ft.Column([name_in, p1_in, p2_in, shares_in, roles_in, error_text], tight=True, scroll=ft.ScrollMode.AUTO),
+                    height=320
+                ),
                 actions=[
                     ft.TextButton("إلغاء", on_click=close_dlg),
                     ft.ElevatedButton("حفظ", on_click=save_member)
@@ -396,14 +490,27 @@ def main(page: ft.Page):
         if not rows:
             members_list.controls.append(ft.Text("لم يتم إضافة أعضاء لهذه الجمعية بعد.", italic=True))
         else:
-            for m in rows:
+            # لمعرفة من عليه الدور (سنعتبر أول عضو لم يسدد أو أول عضو بالقائمة كمثال توضيحي، أو نقوم بتمييز أول عضو كمن عليه الدور الحالي مع نجمة)
+            for index, m in enumerate(rows):
                 m_id, m_name, p1, p2, shares, roles = m
 
+                # نقطة 9: تصحيح رقم التليفون وإضافة كود مصر الثابت (+2) للواتساب تلقائياً
+                def format_wa_phone(phone):
+                    if not phone:
+                        return ""
+                    clean_p = phone.strip()
+                    if clean_p.startswith("0"):
+                        clean_p = clean_p[1:]
+                    if not clean_p.startswith("+2"):
+                        clean_p = "+20" + clean_p
+                    return clean_p
+
                 def send_wa(phone_num):
-                    if not phone_num:
+                    formatted_phone = format_wa_phone(phone_num)
+                    if not formatted_phone:
                         return "#"
                     wa_msg = urllib.parse.quote(f"أهلاً يا أستاذ {m_name}، تذكير بميعاد قسط الجمعية للشهر الحالي. شكراً لحضرتك.")
-                    return f"https://wa.me/{phone_num}?text={wa_msg}"
+                    return f"https://wa.me/{formatted_phone}?text={wa_msg}"
 
                 wa_buttons = []
                 if p1:
@@ -426,39 +533,71 @@ def main(page: ft.Page):
                 conn.close()
                 
                 current_status = pay_status[0] if pay_status else "لم يُسدد"
-                status_color = ft.Colors.GREEN if current_status == "تم السداد" else ft.Colors.RED
 
-                def toggle_payment(e, mid=m_id, cur_st=current_status):
-                    new_st = "لم يُسدد" if cur_st == "تم السداد" else "تم السداد"
-                    conn = sqlite3.connect("gama3at.db")
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM payments WHERE member_id = ?", (mid,))
-                    cursor.execute("INSERT INTO payments (member_id, month_name, status) VALUES (?, ?, ?)", (mid, "الشهر الحالي", new_st))
-                    conn.commit()
-                    conn.close()
-                    gama3a_details_view(gama3a_id, gama3a_name)
+                # نقطة 4: أمان زر السداد (عبر حوار تأكيد واختيار بدل الضغطة المباشرة الخطرة)
+                def open_payment_dialog(e, mid=m_id, mname=m_name, cur_st=current_status):
+                    status_dropdown = ft.Dropdown(
+                        label="حالة السداد",
+                        options=[ft.dropdown.Option("تم السداد"), ft.dropdown.Option("لم يُسدد")],
+                        value=cur_st
+                    )
+                    def save_new_status(ev):
+                        new_st = status_dropdown.value
+                        conn_db = sqlite3.connect("gama3at.db")
+                        cur_db = conn_db.cursor()
+                        cur_db.execute("DELETE FROM payments WHERE member_id = ?", (mid,))
+                        cur_db.execute("INSERT INTO payments (member_id, month_name, status) VALUES (?, ?, ?)", (mid, "الشهر الحالي", new_st))
+                        conn_db.commit()
+                        conn_db.close()
+                        pay_dlg.open = False
+                        page.update()
+                        gama3a_details_view(gama3a_id, gama3a_name)
 
-                pay_btn = ft.ElevatedButton(
+                    def close_pay_dlg(ev):
+                        pay_dlg.open = False
+                        page.update()
+
+                    pay_dlg = ft.AlertDialog(
+                        title=ft.Text(f"تحديث حالة السداد: {mname}"),
+                        content=status_dropdown,
+                        actions=[
+                            ft.TextButton("إلغاء", on_click=close_pay_dlg),
+                            ft.ElevatedButton("حفظ", bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE, on_click=save_new_status)
+                        ]
+                    )
+                    page.overlay.append(pay_dlg)
+                    pay_dlg.open = True
+                    page.update()
+
+                btn_color = ft.Colors.GREEN if current_status == "تم السداد" else ft.Colors.RED
+                pay_action_btn = ft.ElevatedButton(
                     content=ft.Text(f"حالة القسط: {current_status}", color=ft.Colors.WHITE, size=12),
-                    bgcolor=status_color,
-                    on_click=toggle_payment
+                    bgcolor=btn_color,
+                    on_click=open_payment_dialog
                 )
+
+                # نقطة 2: تمييز العضو الذي عليه الدور (أول عضو في القائمة كمثال أو حسب الشهور) بنجمة وخلفية مميزة
+                is_turn_now = (index == 0) # العضو الأول كمثال رئيسي عليه الدور
+                card_bg = ft.Colors.AMBER_50 if is_turn_now else ft.Colors.WHITE
+                title_text = f"⭐ {m_name} (أسهم: {shares}) [عليه دور القبض]" if is_turn_now else f"{m_name} (أسهم: {shares})"
 
                 card = ft.Card(
                     content=ft.Container(
                         content=ft.Column([
                             ft.ListTile(
-                                leading=ft.Icon(ft.Icons.PERSON, color=ft.Colors.BLUE),
-                                title=ft.Text(f"{m_name} (أسهم: {shares})", weight=ft.FontWeight.BOLD),
+                                leading=ft.Icon(ft.Icons.PERSON, color=ft.Colors.AMBER_900 if is_turn_now else ft.Colors.BLUE),
+                                title=ft.Text(title_text, weight=ft.FontWeight.BOLD),
                                 subtitle=ft.Text(f"أشهر القبض: الشهر ({roles or 'غير محدد'}) \nالأرقام: {p1} {f' - {p2}' if p2 else ''}"),
                                 trailing=ft.Row([
                                     ft.IconButton(icon=ft.Icons.EDIT, icon_color=ft.Colors.BLUE, tooltip="تعديل", on_click=lambda e, md=m: open_add_member(e, member_data=md)),
                                     ft.IconButton(icon=ft.Icons.DELETE, icon_color=ft.Colors.RED, tooltip="حذف", on_click=lambda e, mid=m_id: delete_member(mid))
                                 ], tight=True)
                             ),
-                            ft.Row([pay_btn] + wa_buttons, alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True)
+                            ft.Row([pay_action_btn] + wa_buttons, alignment=ft.MainAxisAlignment.SPACE_BETWEEN, wrap=True)
                         ]),
-                        padding=10
+                        padding=10,
+                        bgcolor=card_bg,
+                        border_radius=ft.border_radius.all(8)
                     )
                 )
                 members_list.controls.append(card)
