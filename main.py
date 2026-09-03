@@ -107,30 +107,43 @@ def main(page: ft.Page):
         d.open = False
         page.update()
 
-    # استخدام FilePicker الحقيقي لاختيار ملف الـ DB من التنزيلات أو استرجاعه بكل سهولة
-    def on_save_file_result(e):
-        if e.path:
+    # مسار النسخ الاحتياطي الداخلي الآمن 100% (بدون FilePicker وبدون أي شاشات حمراء)
+    def get_safe_backup_path():
+        base_dir = page.get_app_storage_dir() if hasattr(page, "get_app_storage_dir") else "."
+        if not base_dir:
+            base_dir = "."
+        backup_dir = os.path.join(base_dir, "backups")
+        if not os.path.exists(backup_dir):
             try:
-                shutil.copy("gama3at.db", e.path)
-                dlg = ft.AlertDialog(
-                    title=ft.Text("تم النسخ الاحتياطي بنجاح!", rtl=True),
-                    content=ft.Text(f"تم حفظ النسخة في:\n{e.path}", rtl=True),
-                    actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: close_dlg_generic(dlg))]
-                )
-                page.overlay.append(dlg)
-                dlg.open = True
-                page.update()
-            except Exception as ex:
-                print(ex)
+                os.makedirs(backup_dir)
+            except:
+                backup_dir = "."
+        return os.path.join(backup_dir, "gama3at_backup.db")
 
-    def on_pick_file_result(e):
-        if e.files:
+    def backup_database(e):
+        try:
+            target_path = get_safe_backup_path()
+            shutil.copy("gama3at.db", target_path)
+            
+            dlg = ft.AlertDialog(
+                title=ft.Text("تم النسخ الاحتياطي بنجاح!", rtl=True),
+                content=ft.Text(f"تم حفظ النسخة الاحتياطية بأمان داخل مسار التطبيق:\n{target_path}", rtl=True),
+                actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: close_dlg_generic(dlg))]
+            )
+            page.overlay.append(dlg)
+            dlg.open = True
+            page.update()
+        except Exception as ex:
+            print(ex)
+
+    def restore_database(e):
+        target_path = get_safe_backup_path()
+        if os.path.exists(target_path):
             try:
-                source_path = e.files[0].path
-                shutil.copy(source_path, "gama3at.db")
+                shutil.copy(target_path, "gama3at.db")
                 dlg = ft.AlertDialog(
                     title=ft.Text("تمت الاستعادة بنجاح!", rtl=True),
-                    content=ft.Text("تم استعادة قاعدة البيانات من الملف المختار بنجاح.", rtl=True),
+                    content=ft.Text("تم استعادة جميع البيانات من النسخة الاحتياطية بنجاح.", rtl=True),
                     actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: (close_dlg_generic(dlg), home_view()))]
                 )
                 page.overlay.append(dlg)
@@ -138,26 +151,15 @@ def main(page: ft.Page):
                 page.update()
             except Exception as ex:
                 print(ex)
-
-    file_picker_save = ft.FilePicker()
-    file_picker_save.on_result = on_save_file_result
-
-    file_picker_open = ft.FilePicker()
-    file_picker_open.on_result = on_pick_file_result
-
-    page.overlay.extend([file_picker_save, file_picker_open])
-
-    def backup_database(e):
-        file_picker_save.save_file(
-            dialog_title="حفظ النسخة الاحتياطية",
-            file_name="gama3at_backup.db"
-        )
-
-    def restore_database(e):
-        file_picker_open.pick_files(
-            dialog_title="اختر ملف النسخة الاحتياطية (.db)",
-            allowed_extensions=["db"]
-        )
+        else:
+            dlg = ft.AlertDialog(
+                title=ft.Text("تنبيه", rtl=True),
+                content=ft.Text("لم يتم العثور على نسخة احتياطية محفوظة مسبقاً داخل مسار التطبيق.", rtl=True),
+                actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: close_dlg_generic(dlg))]
+            )
+            page.overlay.append(dlg)
+            dlg.open = True
+            page.update()
 
     # دالة حذف الجمعية من الشاشة الرئيسية
     def delete_gama3a(gama3a_id, gama3a_name):
@@ -334,7 +336,7 @@ def main(page: ft.Page):
             pdf.add_page()
             
             pdf.set_font("Arial", "B", 16)
-            # معالجة آمنة لترميز اللاتيني لمنع أي خطأ Unicode في العناوين والتواريخ
+            # معالجة آمنة لترميز اللاتيني لمنع أي خطأ Unicode في العناوين والتواريخ وحروف الـ ي وغيرها
             safe_title = f"Gama3at Report: {gama3a_name}".encode('latin-1', 'replace').decode('latin-1')
             pdf.cell(0, 10, safe_title, ln=True, align="C")
             
