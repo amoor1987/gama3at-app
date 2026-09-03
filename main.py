@@ -107,7 +107,6 @@ def main(page: ft.Page):
         d.open = False
         page.update()
 
-    # مسار النسخ الاحتياطي الداخلي الآمن 100% (بدون FilePicker وبدون أي شاشات حمراء)
     def get_safe_backup_path():
         base_dir = page.get_app_storage_dir() if hasattr(page, "get_app_storage_dir") else "."
         if not base_dir:
@@ -125,10 +124,22 @@ def main(page: ft.Page):
             target_path = get_safe_backup_path()
             shutil.copy("gama3at.db", target_path)
             
+            def share_backup(ev):
+                if hasattr(page, "launch_url"):
+                    try:
+                        page.launch_url(target_path)
+                    except:
+                        pass
+                dlg.open = False
+                page.update()
+
             dlg = ft.AlertDialog(
                 title=ft.Text("تم النسخ الاحتياطي بنجاح!", rtl=True),
-                content=ft.Text(f"تم حفظ النسخة الاحتياطية بأمان داخل مسار التطبيق:\n{target_path}", rtl=True),
-                actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: close_dlg_generic(dlg))]
+                content=ft.Text("تم حفظ نسخة البيانات في مسار التطبيق الآمن بنجاح.\nهل تريد مشاركة ملف النسخة الاحتياطية (حفظه على الواتساب أو درايف)؟", rtl=True),
+                actions=[
+                    ft.TextButton("إلغاء", on_click=lambda ev: close_dlg_generic(dlg)),
+                    ft.ElevatedButton("مشاركة الملف", bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE, on_click=share_backup)
+                ]
             )
             page.overlay.append(dlg)
             dlg.open = True
@@ -154,14 +165,13 @@ def main(page: ft.Page):
         else:
             dlg = ft.AlertDialog(
                 title=ft.Text("تنبيه", rtl=True),
-                content=ft.Text("لم يتم العثور على نسخة احتياطية محفوظة مسبقاً داخل مسار التطبيق.", rtl=True),
+                content=ft.Text("لم يتم العثور على نسخة احتياطية محفوظة مسبقاً.", rtl=True),
                 actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: close_dlg_generic(dlg))]
             )
             page.overlay.append(dlg)
             dlg.open = True
             page.update()
 
-    # دالة حذف الجمعية من الشاشة الرئيسية
     def delete_gama3a(gama3a_id, gama3a_name):
         def confirm_delete(e):
             conn = sqlite3.connect("gama3at.db")
@@ -336,7 +346,6 @@ def main(page: ft.Page):
             pdf.add_page()
             
             pdf.set_font("Arial", "B", 16)
-            # معالجة آمنة لترميز اللاتيني لمنع أي خطأ Unicode في العناوين والتواريخ وحروف الـ ي وغيرها
             safe_title = f"Gama3at Report: {gama3a_name}".encode('latin-1', 'replace').decode('latin-1')
             pdf.cell(0, 10, safe_title, ln=True, align="C")
             
@@ -378,14 +387,26 @@ def main(page: ft.Page):
             file_name = f"Report_{gama3a_id}.pdf"
             pdf.output(file_name)
             
+            def share_pdf(ev):
+                if hasattr(page, "launch_url"):
+                    try:
+                        page.launch_url(file_name)
+                    except:
+                        pass
+                dlg_success.open = False
+                page.update()
+
             def close_pdf_dlg(ev):
                 dlg_success.open = False
                 page.update()
 
             dlg_success = ft.AlertDialog(
                 title=ft.Text("تم إنشاء التقرير بنجاح!", rtl=True),
-                content=ft.Text("تم حفظ ملف الـ PDF بنجاح.", rtl=True),
-                actions=[ft.ElevatedButton("حسناً", on_click=close_pdf_dlg)]
+                content=ft.Text("تم حفظ ملف الـ PDF بنجاح.\nهل تريد مشاركة الملف (إرساله عبر الواتساب أو حفظه)؟", rtl=True),
+                actions=[
+                    ft.TextButton("إلغاء", on_click=close_pdf_dlg),
+                    ft.ElevatedButton("مشاركة الملف", bgcolor=ft.Colors.RED, color=ft.Colors.WHITE, on_click=share_pdf)
+                ]
             )
             page.overlay.append(dlg_success)
             dlg_success.open = True
