@@ -3,7 +3,6 @@ import sqlite3
 import urllib.parse
 import os
 import shutil
-from pathlib import Path
 from datetime import datetime
 from fpdf import FPDF
 
@@ -104,62 +103,59 @@ def main(page: ft.Page):
         conn.close()
         return rows
 
-    def backup_database(e):
-        try:
-            downloads_path = str(Path.home() / "Downloads")
-            if not os.path.exists(downloads_path):
-                downloads_path = "."
-                
-            backup_file_name = "gama3at_backup.db"
-            destination_path = os.path.join(downloads_path, backup_file_name)
-            
-            shutil.copy("gama3at.db", destination_path)
-            
-            def close_backup_dlg(ev):
-                dlg.open = False
+    # تعريف FilePicker لحفظ واستعادة الملفات خارج مسار التطبيق (في الـ Downloads مثلاً)
+    def on_save_file_result(e: ft.FilePickerResultEvent):
+        if e.path:
+            try:
+                shutil.copy("gama3at.db", e.path)
+                dlg = ft.AlertDialog(
+                    title=ft.Text("تم النسخ الاحتياطي بنجاح!", rtl=True),
+                    content=ft.Text(f"تم حفظ النسخة في:\n{e.path}", rtl=True),
+                    actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: close_dlg_generic(dlg))]
+                )
+                page.overlay.append(dlg)
+                dlg.open = True
                 page.update()
+            except Exception as ex:
+                print(ex)
 
-            dlg = ft.AlertDialog(
-                title=ft.Text("تم النسخ الاحتياطي بنجاح!", rtl=True),
-                content=ft.Text(f"تم حفظ النسخة في مجلد التنزيلات:\n{backup_file_name}", rtl=True),
-                actions=[ft.ElevatedButton("حسناً", on_click=close_backup_dlg)]
-            )
-            page.overlay.append(dlg)
-            dlg.open = True
-            page.update()
-        except Exception as ex:
-            print(ex)
+    def on_pick_file_result(e: ft.FilePickerResultEvent):
+        if e.files:
+            try:
+                source_path = e.files[0].path
+                shutil.copy(source_path, "gama3at.db")
+                dlg = ft.AlertDialog(
+                    title=ft.Text("تمت الاستعادة بنجاح!", rtl=True),
+                    content=ft.Text("تم استعادة قاعدة البيانات من الملف المختار.", rtl=True),
+                    actions=[ft.ElevatedButton("حسناً", on_click=lambda ev: (close_dlg_generic(dlg), home_view()))]
+                )
+                page.overlay.append(dlg)
+                dlg.open = True
+                page.update()
+            except Exception as ex:
+                print(ex)
+
+    file_picker_save = ft.FilePicker(on_result=on_save_file_result)
+    file_picker_open = ft.FilePicker(on_result=on_pick_file_result)
+    page.overlay.extend([file_picker_save, file_picker_open])
+
+    def close_dlg_generic(d):
+        d.open = False
+        page.update()
+
+    def backup_database(e):
+        # فتح نافذة اختيار مكان حفظ الملف الخارجي
+        file_picker_save.save_file(
+            dialog_title="حفظ النسخة الاحتياطية",
+            file_name="gama3at_backup.db"
+        )
 
     def restore_database(e):
-        def close_restore_dlg(ev):
-            dlg.open = False
-            page.update()
-
-        downloads_path = str(Path.home() / "Downloads")
-        backup_path_dl = os.path.join(downloads_path, "gama3at_backup.db")
-        
-        target_backup = backup_path_dl if os.path.exists(backup_path_dl) else "gama3at_backup.db"
-
-        if os.path.exists(target_backup):
-            shutil.copy(target_backup, "gama3at.db")
-            dlg = ft.AlertDialog(
-                title=ft.Text("تمت الاستعادة بنجاح!", rtl=True),
-                content=ft.Text("تم استعادة جميع البيانات من النسخة الاحتياطية. يرجى إعادة تشغيل التطبيق.", rtl=True),
-                actions=[ft.ElevatedButton("حسناً", on_click=close_restore_dlg)]
-            )
-            page.overlay.append(dlg)
-            dlg.open = True
-            page.update()
-            home_view()
-        else:
-            dlg = ft.AlertDialog(
-                title=ft.Text("تنبيه", rtl=True),
-                content=ft.Text("لم يتم العثور على ملف نسخة احتياطية في مجلد التنزيلات.", rtl=True),
-                actions=[ft.ElevatedButton("حسناً", on_click=close_restore_dlg)]
-            )
-            page.overlay.append(dlg)
-            dlg.open = True
-            page.update()
+        # فتح نافذة اختيار ملف النسخة الاحتياطية للاستعادة
+        file_picker_open.pick_files(
+            dialog_title="اختر ملف النسخة الاحتياطية",
+            allowed_extensions=["db"]
+        )
 
     def home_view():
         current_view_state[0] = "home"
@@ -301,7 +297,7 @@ def main(page: ft.Page):
             pdf.add_page()
             
             pdf.set_font("Arial", "B", 16)
-            pdf.cell(0, 10, f"Gama3at Report: {gama3a_name}", ln=True, align="C")
+            pdf.cell(0, 10, f"Gama3at Report: {gama3a_name}".encode('latin-1', 'replace').decode('latin-1'), ln=True, align="C")
             
             pdf.set_font("Arial", "", 12)
             pdf.cell(0, 8, f"Share Amount: {g_amount} EGP | Total Months: {max_allowed_months} | Start: {g_start}", ln=True, align="C")
@@ -322,19 +318,22 @@ def main(page: ft.Page):
                 cur.execute("SELECT status FROM payments WHERE member_id = ? ORDER BY id DESC LIMIT 1", (m_id,))
                 st = cur.fetchone()
                 status_str = st[0] if st else "Not Paid"
+                
+                safe_name = str(m_name).encode('latin-1', 'replace').decode('latin-1')
+                safe_status = "Paid" if status_str == "تم السداد" else "Not Paid"
 
-                pdf.cell(50, 8, str(m_name), 1)
+                pdf.cell(50, 8, safe_name, 1)
                 pdf.cell(30, 8, str(p1 or ""), 1)
                 pdf.cell(20, 8, str(shares), 1)
                 pdf.cell(40, 8, str(roles or ""), 1)
-                pdf.cell(30, 8, str(status_str), 1, ln=True)
+                pdf.cell(30, 8, safe_status, 1, ln=True)
             conn_db.close()
 
             pdf.ln(15)
             pdf.set_font("Arial", "I", 10)
             pdf.cell(0, 6, "Design and Programming - Eng: Amr El-Sherif (N.O.: 01009191945)", ln=True, align="C")
 
-            file_name = f"Report_{gama3a_name}.pdf"
+            file_name = f"Report_{gama3a_id}.pdf"
             pdf.output(file_name)
             
             def close_pdf_dlg(ev):
@@ -343,14 +342,13 @@ def main(page: ft.Page):
 
             dlg_success = ft.AlertDialog(
                 title=ft.Text("تم إنشاء التقرير بنجاح!", rtl=True),
-                content=ft.Text(f"تم حفظ ملف الـ PDF باسم:\n{file_name}\nموجود في مجلد التنزيلات.", rtl=True),
+                content=ft.Text("تم حفظ ملف الـ PDF بنجاح.", rtl=True),
                 actions=[ft.ElevatedButton("حسناً", on_click=close_pdf_dlg)]
             )
             page.overlay.append(dlg_success)
             dlg_success.open = True
             page.update()
 
-        # نافذة الدليل الاسترشادي للشهور
         def open_guide_dialog(e):
             month_schedule = {i: [] for i in range(1, max_allowed_months + 1)}
             for m in rows:
@@ -417,7 +415,6 @@ def main(page: ft.Page):
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, rtl=True)
         )
 
-        # زرار بارز وصريح خاص بفتح الدليل الاسترشادي للشهور والأدوار بجانب زر الـ PDF
         guide_btn = ft.ElevatedButton(
             content=ft.Row([ft.Icon(ft.Icons.MENU_BOOK, color=ft.Colors.WHITE), ft.Text("الدليل الاسترشادي لأدوار الشهور", color=ft.Colors.WHITE)], alignment=ft.MainAxisAlignment.CENTER, rtl=True),
             bgcolor=ft.Colors.GREEN_700,
@@ -672,7 +669,6 @@ def main(page: ft.Page):
 
         footer_info = ft.Text("Design and Programming | Eng: Amr El-Sherif | N.O.: 01009191945", size=11, color=ft.Colors.GREY, text_align=ft.TextAlign.CENTER)
 
-        # تم وضع زرار الدليل الاسترشادي بوضوح بجانب زر طباعة التقرير
         page.add(header, guide_btn, pdf_btn, ft.Divider(), members_list, add_mem_btn, ft.Divider(), footer_info)
         page.update()
 
