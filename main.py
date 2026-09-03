@@ -103,8 +103,12 @@ def main(page: ft.Page):
         conn.close()
         return rows
 
-    # تعريف FilePicker لحفظ واستعادة الملفات خارج مسار التطبيق (في الـ Downloads مثلاً)
-    def on_save_file_result(e: ft.FilePickerResultEvent):
+    def close_dlg_generic(d):
+        d.open = False
+        page.update()
+
+    # دوال الـ FilePicker بعد تصحيح طريقة ربط الحدث
+    def on_save_file_result(e):
         if e.path:
             try:
                 shutil.copy("gama3at.db", e.path)
@@ -119,7 +123,7 @@ def main(page: ft.Page):
             except Exception as ex:
                 print(ex)
 
-    def on_pick_file_result(e: ft.FilePickerResultEvent):
+    def on_pick_file_result(e):
         if e.files:
             try:
                 source_path = e.files[0].path
@@ -135,27 +139,59 @@ def main(page: ft.Page):
             except Exception as ex:
                 print(ex)
 
-    file_picker_save = ft.FilePicker(on_result=on_save_file_result)
-    file_picker_open = ft.FilePicker(on_result=on_pick_file_result)
+    file_picker_save = ft.FilePicker()
+    file_picker_save.on_result = on_save_file_result
+
+    file_picker_open = ft.FilePicker()
+    file_picker_open.on_result = on_pick_file_result
+
     page.overlay.extend([file_picker_save, file_picker_open])
 
-    def close_dlg_generic(d):
-        d.open = False
-        page.update()
-
     def backup_database(e):
-        # فتح نافذة اختيار مكان حفظ الملف الخارجي
         file_picker_save.save_file(
             dialog_title="حفظ النسخة الاحتياطية",
             file_name="gama3at_backup.db"
         )
 
     def restore_database(e):
-        # فتح نافذة اختيار ملف النسخة الاحتياطية للاستعادة
         file_picker_open.pick_files(
             dialog_title="اختر ملف النسخة الاحتياطية",
             allowed_extensions=["db"]
         )
+
+    # دالة حذف الجمعية من الشاشة الرئيسية
+    def delete_gama3a(gama3a_id, gama3a_name):
+        def confirm_delete(e):
+            conn = sqlite3.connect("gama3at.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM members WHERE gama3a_id = ?", (gama3a_id,))
+            member_ids = [row[0] for row in cursor.fetchall()]
+            for m_id in member_ids:
+                cursor.execute("DELETE FROM payments WHERE member_id = ?", (m_id,))
+            cursor.execute("DELETE FROM members WHERE gama3a_id = ?", (gama3a_id,))
+            cursor.execute("DELETE FROM gama3at WHERE id = ?", (gama3a_id,))
+            conn.commit()
+            conn.close()
+            
+            del_dlg.open = False
+            page.update()
+            home_view()
+
+        def cancel_delete(e):
+            del_dlg.open = False
+            page.update()
+
+        del_dlg = ft.AlertDialog(
+            title=ft.Text("تأكيد حذف الجمعية", rtl=True),
+            content=ft.Text(f"هل أنت متأكد من حذف جمعية ({gama3a_name}) بكل أعضائها وبياناتها نهائياً؟", rtl=True),
+            actions=[
+                ft.TextButton("إلغاء", on_click=cancel_delete),
+                ft.ElevatedButton("حذف", bgcolor=ft.Colors.RED, color=ft.Colors.WHITE, on_click=confirm_delete)
+            ]
+        )
+        page.overlay.append(del_dlg)
+        del_dlg.open = True
+        page.update()
 
     def home_view():
         current_view_state[0] = "home"
@@ -253,8 +289,9 @@ def main(page: ft.Page):
                                 subtitle=ft.Text(f"السهم: {g_amount} ج.م | الشهور: {g_months} | إجمالي القبض: {total_payout} ج.م\nالبداية: {g_start or 'غير محدد'}", rtl=True),
                             ),
                             ft.Row([
+                                ft.IconButton(icon=ft.Icons.DELETE, icon_color=ft.Colors.RED, tooltip="حذف الجمعية", on_click=lambda e, gid=g_id, gname=g_name: delete_gama3a(gid, gname)),
                                 ft.TextButton("دخول الجمعية", icon=ft.Icons.ARROW_FORWARD, on_click=lambda e, gid=g_id, gname=g_name: gama3a_details_view(gid, gname))
-                            ], alignment=ft.MainAxisAlignment.END, rtl=True)
+                            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, rtl=True)
                         ]),
                         padding=10
                     )
