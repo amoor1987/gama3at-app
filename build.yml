@@ -34,7 +34,7 @@ jobs:
           cache: true
 
       - name: Install Flet and Dependencies
-        run: pip install flet fpdf
+        run: pip install flet fpdf2 certifi
 
       - name: Build APK via Flet
         run: flet build apk --force
