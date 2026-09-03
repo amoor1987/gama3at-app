@@ -70,7 +70,7 @@ def main(page: ft.Page):
     current_view_state = ["home"]
     current_gama3a_info = [None, None]
 
-    # تعريف FilePicker بالشكل الصحيح المتوافق تماماً
+    # التعريف السليم في الـ Overlay عشان ميفهرش أي مربعات حمراء
     file_picker = ft.FilePicker()
     page.overlay.append(file_picker)
 
@@ -267,8 +267,8 @@ def main(page: ft.Page):
 
         footer_info = ft.Text("Design and Programming | Eng: Amr El-Sherif | N.O.: 01009191945", size=11, color=ft.Colors.GREY, text_align=ft.TextAlign.CENTER)
 
-        # إضافة الـ file_picker كعنصر مخفي داخل الصفحة لضمان عدم ظهور المربع الأحمر أبداً
-        page.add(header, backup_restore_row, ft.Divider(), gama3at_list, add_btn, ft.Divider(), footer_info, file_picker)
+        # تم إزالة file_picker من هنا تماماً لأنه مضاف في الـ overlay بالأعلى بصورة صحيحة
+        page.add(header, backup_restore_row, ft.Divider(), gama3at_list, add_btn, ft.Divider(), footer_info)
         page.update()
 
     def gama3a_details_view(gama3a_id, gama3a_name):
@@ -593,7 +593,7 @@ def main(page: ft.Page):
 
         footer_info = ft.Text("Design and Programming | Eng: Amr El-Sherif | N.O.: 01009191945", size=11, color=ft.Colors.GREY, text_align=ft.TextAlign.CENTER)
 
-        page.add(header, pdf_btn, ft.Divider(), members_list, add_mem_btn, ft.Divider(), footer_info, file_picker)
+        page.add(header, backup_restore_row, ft.Divider(), gama3at_list, add_btn, ft.Divider(), footer_info)
         page.update()
 
     home_view()
